@@ -46,9 +46,13 @@ def parse_match(path: Path) -> tuple[list[dict], dict | None]:
 
     toss = info.get("toss", {})
     dates = info.get("dates", [])
-    season = info.get("season")
-    # season can be an int or a string like "2007/08"
-    season = str(season)
+    # Extract year from the match date (format: "YYYY-MM-DD") rather than
+    # using the JSON's season field, which can be "2007/08" style strings.
+    # Falls back to the season field only if no date is available.
+    if dates:
+        season = str(dates[0])[:4]   # e.g. "2008-04-18" → "2008"
+    else:
+        season = str(info.get("season", "unknown"))
 
     match_info = {
         "match_id": match_id,
