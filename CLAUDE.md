@@ -104,17 +104,10 @@ Two primary DataFrames drive all analysis. Both live in `data/processed/` and ar
 
 | Week | Focus | Status |
 |------|-------|--------|
-| 1 | Data ingestion: parse JSONs, flatten to DataFrames, clean names, wire pipeline | ~85% — parser done, name map written but **not yet integrated**; missing columns not yet added |
+| 1 | Data ingestion: parse JSONs, flatten to DataFrames, clean names, wire pipeline | **Complete** — all columns added, name map integrated, CSVs generated (279,586 delivery rows, 1,175 match rows) |
 | 2 | EDA + all 5 analysis angles in Jupyter, Plotly visualizations | Not started |
 | 3 | Win probability model, player impact score, model evaluation | Not started |
 | 4 | Streamlit dashboard, GitHub README, demo recording | Not started |
-
-### Week 1 Remaining Tasks
-Before moving to Week 2, these must be done:
-1. Add `batting_position`, `target_runs`, `target_overs`, `super_over` columns to `src/parser.py`
-2. Rewrite `main.py` to orchestrate: parse → standardise names → save CSVs
-3. Create `src/__init__.py` (empty file) so `src` is a proper Python package
-4. Regenerate `data/processed/*.csv`
 
 ## Key Implementation Notes
 
