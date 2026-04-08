@@ -71,6 +71,12 @@ def parse_match(path: Path) -> tuple[list[dict], dict | None]:
     deliveries = []
     for innings_idx, innings in enumerate(data.get("innings", []), start=1):
         batting_team = innings.get("team")
+        is_super_over = innings.get("super_over", False)
+        target_info = innings.get("target", {})
+        target_runs = target_info.get("runs")    # None for innings 1 (no target yet)
+        target_overs = target_info.get("overs")  # None for innings 1
+        batting_order = {}
+        next_position = 1
         bowling_team = next(
             (t for t in teams if t != batting_team), None
         )
@@ -125,6 +131,12 @@ def parse_match(path: Path) -> tuple[list[dict], dict | None]:
                 cumulative_runs += total_runs
                 cumulative_wickets += len(wickets)
 
+                batter_name = ball_data.get("batter")
+                if batter_name not in batting_order:                   
+                    batting_order[batter_name] = next_position
+                    next_position += 1                                 
+                batter_pos = batting_order[batter_name]
+                
                 deliveries.append(
                     {
                         "match_id": match_id,
@@ -139,6 +151,10 @@ def parse_match(path: Path) -> tuple[list[dict], dict | None]:
                         "batter": ball_data.get("batter"),
                         "non_striker": ball_data.get("non_striker"),
                         "bowler": ball_data.get("bowler"),
+                        "batting_position": batter_pos,
+                        "target_runs": target_runs,
+                        "target_overs": target_overs,
+                        "super_over": is_super_over,
                         "batter_runs": batter_runs,
                         "extra_runs": extra_runs,
                         "total_runs": total_runs,
@@ -184,7 +200,7 @@ def parse_all(raw_dir: Path = RAW_DIR, processed_dir: Path = PROCESSED_DIR):
     matches_df = pd.DataFrame(all_matches)
 
     # lightweight type fixes
-    for col in ["is_wide", "is_noball", "is_boundary_4", "is_boundary_6", "is_dot", "wicket"]:
+    for col in ["is_wide", "is_noball", "is_boundary_4", "is_boundary_6", "is_dot", "wicket", "super_over"]:
         deliveries_df[col] = deliveries_df[col].astype(bool)
 
     processed_dir.mkdir(parents=True, exist_ok=True)
