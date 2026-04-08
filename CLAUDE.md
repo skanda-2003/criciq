@@ -150,7 +150,7 @@ git pull
 git checkout -b branch-name
 ```
 
-Branch naming: `feat/name` · `fix/bug-name` · `ui/change-name` — one branch per phase.
+Branch naming: `feat/name` · `fix/bug-name` · `ui/change-name` — one branch per phase. **Always use meaningful, descriptive names** — e.g. `feat/add-missing-parser-columns`, not `feat/week1` or `feat/phase2`.
 
 After completing:
 ```bash
