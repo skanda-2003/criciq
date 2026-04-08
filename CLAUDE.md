@@ -129,7 +129,9 @@ Before moving to Week 2, these must be done:
 ## Notes for Claude Code
 
 - Keep code simple, well structured, and well commented — I am a beginner
-- Explain what you are doing as you go; be ready to explain line by line if asked
+- **Give very detailed explanations** — this entire stack (Python, Pandas, ML, Streamlit) is new; explain the "why" behind every decision, not just the "what"
+- Be ready to explain any line of code if asked — never assume prior knowledge
+- **Sometimes guide instead of doing** — for learning-heavy tasks, walk me through the steps and let me write the code; only take over if I'm stuck
 - Ask before making large changes or refactors
 - Remind me to clear chat context after every feature
 - **When I paste text/feedback, do NOT autonomously edit files.** Ask what I want done first
