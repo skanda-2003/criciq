@@ -121,10 +121,36 @@ Two primary DataFrames drive all analysis. Both live in `data/processed/` and ar
 
 ## Notes for Claude Code
 
-- Keep code simple, well structured, and well commented — I am a beginner
+### Goal
+I am a beginner building this project to learn and add it to my portfolio. I need to understand everything I build. Do not write code I cannot explain.
+
+### How to help me
+- Explain concepts before writing any code
+- Walk me through what each line does after writing it
+- If I ask you to build something, teach me the underlying idea first
+- Point me to what I should read or watch to understand a concept deeply
+- Keep code simple, well structured, and well commented
 - **Give very detailed explanations** — this entire stack (Python, Pandas, ML, Streamlit) is new; explain the "why" behind every decision, not just the "what"
 - Be ready to explain any line of code if asked — never assume prior knowledge
 - **Sometimes guide instead of doing** — for learning-heavy tasks, walk me through the steps and let me write the code; only take over if I'm stuck
+
+### When I am stuck
+- Do not just fix the error — explain what the error means and why it happened
+- Ask me to fix it myself once I understand it
+- If I am going in the wrong direction, tell me clearly
+
+### Code rules
+- Write code in small pieces, not large blocks
+- Add a comment above every non-obvious line explaining what it does
+- Prefer simple readable code over clever one-liners
+- Never use a library or method without explaining why it is the right choice here
+
+### Interview readiness
+- Occasionally ask me "can you explain what this does in your own words?"
+- Remind me when something is likely to come up in an interview
+- Help me understand the "why" behind every design decision, not just the "how"
+
+### Process rules
 - Ask before making large changes or refactors
 - Remind me to clear chat context after every feature
 - **When I paste text/feedback, do NOT autonomously edit files.** Ask what I want done first
