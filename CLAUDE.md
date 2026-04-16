@@ -138,7 +138,9 @@ Writing hypotheses before running analysis is a research discipline. These are e
 | 3 | Win probability model, player impact score, model evaluation | `05_win_probability.ipynb`, `06_player_impact.ipynb` | Trained models, calibration curves, impact leaderboard |
 | 4 | Streamlit dashboard, GitHub README, demo recording | — | Live dashboard, polished README, screen recording |
 
-> Week 1 status: **Complete** — all columns added, name map integrated, CSVs generated (279,586 delivery rows, 1,175 match rows)
+> Week 1 status: **Complete** — name map integrated, CSVs generated (279,586 delivery rows, 1,175 match rows). **Known gap:** `current_run_rate`, `required_run_rate`, and `run_rate_pressure` columns are missing from `deliveries.csv` — must be added before Week 3 notebooks begin. Planned fix: add them in `01_parser_validation.ipynb` or as a patch to `main.py` at the start of Week 2.
+
+> Week 2 status: **In progress** — starting with parser validation and run-rate column patch
 
 ## Known Limitations
 
