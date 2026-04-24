@@ -67,6 +67,8 @@ def add_run_rate_columns(df):
     rrr = runs_needed / overs_remaining
     # If no overs remain (end of innings), set to NaN — division by zero.
     rrr[overs_remaining == 0] = np.nan
+    rrr[runs_needed <= 0] = np.nan
+    rrr = rrr.clip(upper = 36)
     df["required_run_rate"] = rrr
 
     # --- run_rate_pressure ---
@@ -75,6 +77,7 @@ def add_run_rate_columns(df):
     # Value of 2.0 means they need to score twice as fast as they currently are.
     # NaN wherever either CRR or RRR is NaN (i.e. 1st innings and over 0).
     df["run_rate_pressure"] = df["required_run_rate"] / df["current_run_rate"]
+    df.loc[df["current_run_rate"].isnull() | (df["current_run_rate"] == 0), "run_rate_pressure"] = np.nan
 
 
 def main():
