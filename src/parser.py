@@ -1,9 +1,7 @@
-"""
-Cricsheet IPL JSON parser.
-Flattens nested match JSON files into two DataFrames:
-  - deliveries.csv : one row per ball
-  - matches.csv    : one row per match
-"""
+# Cricsheet IPL JSON parser
+# flattens nested match JSON files into two DataFrames:
+#   deliveries.csv: one row per ball
+#   matches.csv: one row per match
 
 import json
 from pathlib import Path
@@ -17,12 +15,10 @@ PROCESSED_DIR = Path(__file__).parent.parent / "data" / "processed"
 
 
 def parse_match(path: Path) -> tuple[list[dict], dict | None]:
-    """Parse a single Cricsheet JSON file.
-
-    Returns (deliveries, match_info) where deliveries is a list of dicts
-    (one per ball) and match_info is a single dict for the match summary.
-    Returns ([], None) on parse error.
-    """
+    # parse a single Cricsheet JSON file
+    # returns (deliveries, match_info) where deliveries is a list of dicts (one per ball)
+    # and match_info is a single dict for the match summary
+    # returns ([], None) on any parse error
     try:
         with open(path) as f:
             data = json.load(f)
@@ -32,7 +28,7 @@ def parse_match(path: Path) -> tuple[list[dict], dict | None]:
     info = data.get("info", {})
     match_id = path.stem
 
-    # --- match-level fields ---
+    # match-level fields
     teams = info.get("teams", [None, None])
     outcome = info.get("outcome", {})
     winner = outcome.get("winner")
@@ -46,11 +42,11 @@ def parse_match(path: Path) -> tuple[list[dict], dict | None]:
 
     toss = info.get("toss", {})
     dates = info.get("dates", [])
-    # Extract year from the match date (format: "YYYY-MM-DD") rather than
-    # using the JSON's season field, which can be "2007/08" style strings.
-    # Falls back to the season field only if no date is available.
+    # extract the year from the match date (format: "YYYY-MM-DD") rather than
+    # the JSON's season field which can be "2007/08" style strings
+    # falls back to the season field only if no date is available
     if dates:
-        season = str(dates[0])[:4]   # e.g. "2008-04-18" → "2008"
+        season = str(dates[0])[:4]   # e.g. "2008-04-18" -> "2008"
     else:
         season = str(info.get("season", "unknown"))
 
@@ -71,21 +67,21 @@ def parse_match(path: Path) -> tuple[list[dict], dict | None]:
         "player_of_match": ", ".join(info.get("player_of_match", [])),
     }
 
-    # --- delivery-level fields ---
+    # delivery-level fields
     deliveries = []
     for innings_idx, innings in enumerate(data.get("innings", []), start=1):
         batting_team = innings.get("team")
         is_super_over = innings.get("super_over", False)
         target_info = innings.get("target", {})
-        target_runs = target_info.get("runs")    # None for innings 1 (no target yet)
-        target_overs = target_info.get("overs")  # None for innings 1
+        target_runs = target_info.get("runs")    # None for first innings, no target yet
+        target_overs = target_info.get("overs")  # None for first innings
         batting_order = {}
         next_position = 1
         bowling_team = next(
             (t for t in teams if t != batting_team), None
         )
 
-        # running totals for cumulative run / wicket tracking
+        # running totals reset at the start of each innings
         cumulative_runs = 0
         cumulative_wickets = 0
 
@@ -114,7 +110,7 @@ def parse_match(path: Path) -> tuple[list[dict], dict | None]:
 
                 wicket_kind = wickets[0].get("kind") if wickets else None
                 player_out = wickets[0].get("player_out") if wickets else None
-                # fielders involved (catches, run-outs)
+                # fielders involved in catches and run-outs
                 fielders = (
                     ", ".join(
                         f.get("name", "") for f in wickets[0].get("fielders", [])
@@ -135,12 +131,14 @@ def parse_match(path: Path) -> tuple[list[dict], dict | None]:
                 cumulative_runs += total_runs
                 cumulative_wickets += len(wickets)
 
+                # track batting position: first time we see a batter in this innings,
+                # assign them the next available position number
                 batter_name = ball_data.get("batter")
-                if batter_name not in batting_order:                   
+                if batter_name not in batting_order:
                     batting_order[batter_name] = next_position
-                    next_position += 1                                 
+                    next_position += 1
                 batter_pos = batting_order[batter_name]
-                
+
                 deliveries.append(
                     {
                         "match_id": match_id,
@@ -203,7 +201,7 @@ def parse_all(raw_dir: Path = RAW_DIR, processed_dir: Path = PROCESSED_DIR):
     deliveries_df = pd.DataFrame(all_deliveries)
     matches_df = pd.DataFrame(all_matches)
 
-    # lightweight type fixes
+    # cast boolean columns explicitly
     for col in ["is_wide", "is_noball", "is_boundary_4", "is_boundary_6", "is_dot", "wicket", "super_over"]:
         deliveries_df[col] = deliveries_df[col].astype(bool)
 
@@ -212,8 +210,8 @@ def parse_all(raw_dir: Path = RAW_DIR, processed_dir: Path = PROCESSED_DIR):
     matches_df.to_csv(processed_dir / "matches.csv", index=False)
 
     print(f"\nDone.")
-    print(f"  deliveries : {len(deliveries_df):,} rows  → data/processed/deliveries.csv")
-    print(f"  matches    : {len(matches_df):,} rows  → data/processed/matches.csv")
+    print(f"  deliveries : {len(deliveries_df):,} rows  -> data/processed/deliveries.csv")
+    print(f"  matches    : {len(matches_df):,} rows  -> data/processed/matches.csv")
     return deliveries_df, matches_df
 
 
