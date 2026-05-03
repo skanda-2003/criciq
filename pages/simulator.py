@@ -2,50 +2,28 @@ import dash
 from dash import html, dcc, callback, Input, Output
 import dash_bootstrap_components as dbc
 import pandas as pd
-import numpy as np
-from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import StandardScaler
+import plotly.graph_objects as go
 
-from components.charts import win_probability_gauge
+from components.charts import win_probability_gauge, CHART_THEME
+from src.wp_model import predict_prob, FEATURES
 
 dash.register_page(__name__, path="/simulator", name="Match Simulator", title="CricIQ - Simulator")
 
-# ── Retrain LR model at server start ────────────────────────────────
-# The saved .pkl has a scikit-learn version mismatch, so we refit here.
-# Runs once on startup — takes ~2 seconds on the full dataset.
-_del = pd.read_csv("data/processed/deliveries.csv")
-_del2 = _del[
-    (_del["season"] >= 2021) &
-    (~_del["super_over"].astype(bool)) &
-    (_del["innings"] == 2) &
-    (_del["required_run_rate"].notna()) &
-    (_del["run_rate_pressure"].notna())
-].copy()
+# ── Load team list at server start ───────────────────────────────────
+# The model itself is trained in src/wp_model.py and cached there - importing
+# it above is all that's needed. No re-training happens here.
+_del   = pd.read_csv("data/processed/deliveries.csv")
+_TEAMS = sorted(_del["batting_team"].dropna().unique())
 
-_del2["wickets_in_hand"] = 10 - _del2["cumulative_wickets"]
-_del2["overs_remaining"] = 20 - _del2["over"]
-_del2["won"] = (_del2["batting_team"] == _del2["match_winner"]).astype(int)
-
-_FEATURES = ["current_run_rate", "required_run_rate", "run_rate_pressure",
-             "wickets_in_hand", "overs_remaining"]
-_X = _del2[_FEATURES].replace([np.inf, -np.inf], np.nan).dropna()
-_y = _del2.loc[_X.index, "won"]
-
-_scaler = StandardScaler()
-_model  = LogisticRegression(max_iter=1000, random_state=42)
-_model.fit(_scaler.fit_transform(_X), _y)
-
-_TEAMS = sorted(_del["batting_team"].unique())
-
-# ── Input field style shared across number inputs ────────────────────
+# ── Input field style ────────────────────────────────────────────────
 _INPUT_STYLE = {
-    "width":       "100%",
-    "border":      "1px solid #e5e5e5",
+    "width":        "100%",
+    "border":       "1px solid #e5e5e5",
     "borderRadius": "4px",
-    "padding":     "6px 10px",
-    "fontSize":    "13px",
-    "fontFamily":  "Inter, system-ui, sans-serif",
-    "outline":     "none",
+    "padding":      "6px 10px",
+    "fontSize":     "12px",
+    "fontFamily":   "Inter, system-ui, sans-serif",
+    "outline":      "none",
 }
 
 # ── Layout ───────────────────────────────────────────────────────────
@@ -53,9 +31,9 @@ layout = html.Div([
 
     html.Span("Match Simulator · 2nd Innings Chase", className="section-label"),
 
+    # Row 1: inputs (left) + gauge (right)
     dbc.Row([
 
-        # Left: input form
         dbc.Col(html.Div([
             html.Span("Chase Inputs", className="chart-card__label"),
 
@@ -74,8 +52,8 @@ layout = html.Div([
                 ], width=6),
             ]),
 
-            html.P(id="sim-overs-label", className="section-label", style={"marginBottom": "4px", "marginTop": "14px"}),
-            dcc.Slider(id="sim-overs", min=1, max=19, step=1, value=10,
+            html.P(id="sim-overs-label",   className="section-label", style={"marginBottom": "4px", "marginTop": "14px"}),
+            dcc.Slider(id="sim-overs",   min=1, max=19, step=1, value=10,
                        marks={i: str(i) for i in range(1, 20, 2)},
                        tooltip={"placement": "bottom", "always_visible": False}),
 
@@ -86,22 +64,34 @@ layout = html.Div([
 
         ], className="chart-card"), width=5),
 
-        # Right: gauge output
         dbc.Col(html.Div([
             html.Span("Win Probability", className="chart-card__label"),
-            dcc.Graph(id="sim-gauge", config={"displayModeBar": False}, style={"height": "260px"}),
+            dcc.Graph(id="sim-gauge", config={"displayModeBar": False}, style={"height": "240px"}),
             html.Div(id="sim-stats", style={"textAlign": "center"}),
         ], className="chart-card"), width=7),
 
     ], className="card-row"),
+
+    # Row 2: projected win probability trajectory (H)
+    dbc.Row([
+        dbc.Col(html.Div([
+            html.Span(
+                "Projected Win Probability · If current run rate is maintained",
+                className="chart-card__label",
+            ),
+            dcc.Graph(id="sim-trajectory", config={"displayModeBar": False}, style={"height": "200px"}),
+        ], className="chart-card"), width=12),
+    ], className="card-row"),
+
 ])
 
 
 @callback(
-    Output("sim-gauge",         "figure"),
-    Output("sim-overs-label",   "children"),
-    Output("sim-wickets-label", "children"),
-    Output("sim-stats",         "children"),
+    Output("sim-gauge",        "figure"),
+    Output("sim-trajectory",   "figure"),
+    Output("sim-overs-label",  "children"),
+    Output("sim-wickets-label","children"),
+    Output("sim-stats",        "children"),
     Input("sim-target",  "value"),
     Input("sim-score",   "value"),
     Input("sim-overs",   "value"),
@@ -112,7 +102,7 @@ def update_simulator(target, score, overs_done, wickets_fallen, team):
     import traceback
     try:
         target         = target or 180
-        score          = score or 0
+        score          = score  or 0
         overs_done     = overs_done or 1
         wickets_fallen = wickets_fallen or 0
 
@@ -124,26 +114,93 @@ def update_simulator(target, score, overs_done, wickets_fallen, team):
         required_rr = runs_needed / overs_remaining if overs_remaining > 0 else 36.0
         rr_pressure = required_rr / current_rr if current_rr > 0 else 2.0
 
-        X_new = pd.DataFrame(
-            [[current_rr, required_rr, rr_pressure, wickets_in_hand, overs_remaining]],
-            columns=_FEATURES,
-        )
-        prob  = float(_model.predict_proba(_scaler.transform(X_new))[0][1])
-        gauge = win_probability_gauge(prob, title=f"{team}")
+        # Current win probability (shown on the gauge)
+        prob  = predict_prob(current_rr, required_rr, rr_pressure, wickets_in_hand, overs_remaining)
+        gauge = win_probability_gauge(prob, title=team)
 
         stats = html.Span(
             f"Need {runs_needed} off {overs_remaining * 6} balls  ·  "
             f"RRR {required_rr:.2f}  ·  CRR {current_rr:.2f}",
-            style={"fontSize": "11px", "color": "#888"},
+            style={"fontSize": "11px", "color": "#888",
+                   "fontFamily": "IBM Plex Mono, monospace"},
         )
-        return gauge, f"Overs Completed · {overs_done}", f"Wickets Fallen · {wickets_fallen}", stats
+
+        # ── Projected trajectory (H) ──────────────────────────────────
+        # For each over from the current position to over 20, project forward
+        # assuming the team continues at current_rr with no further wickets.
+        # This answers: "if nothing changes, where is our win prob heading?"
+        overs_x = []
+        probs_y = []
+
+        for future_over in range(overs_done, 21):
+            extra_overs    = future_over - overs_done
+            proj_score     = score + current_rr * extra_overs
+            proj_needed    = max(target - proj_score, 0)
+            proj_or        = 20 - future_over
+
+            if proj_needed <= 0:
+                # Team has already reached the target at this projected over
+                p = 1.0
+            elif proj_or == 0:
+                # Last ball - either got there or didn't
+                p = 1.0 if proj_needed <= 0 else 0.0
+            else:
+                proj_req_rr  = proj_needed / proj_or
+                proj_pressure = proj_req_rr / current_rr if current_rr > 0 else 2.0
+                p = predict_prob(current_rr, proj_req_rr, proj_pressure,
+                                 wickets_in_hand, proj_or)
+
+            overs_x.append(future_over)
+            probs_y.append(p)
+
+        fig_traj = go.Figure()
+
+        # Reference line at 50% - the toss-up line
+        fig_traj.add_hline(y=0.5, line_dash="dash", line_color="#e5e5e5", line_width=1)
+
+        # Dashed extension for projected future overs, solid dot at the current state
+        fig_traj.add_trace(go.Scatter(
+            x=overs_x[1:],
+            y=probs_y[1:],
+            mode="lines",
+            line={"color": "#3b82f6", "width": 1.5, "dash": "dot"},
+            name="Projected",
+            showlegend=False,
+        ))
+        # Current state highlighted as a solid marker
+        fig_traj.add_trace(go.Scatter(
+            x=[overs_done],
+            y=[prob],
+            mode="markers",
+            marker={"color": "#3b82f6", "size": 8},
+            name="Now",
+            showlegend=False,
+            hovertemplate=f"Over {overs_done}: <b>{prob:.1%}</b><extra>Current state</extra>",
+        ))
+
+        fig_traj.update_layout(**CHART_THEME)
+        fig_traj.update_layout(
+            xaxis={**CHART_THEME["xaxis"], "range": [overs_done - 0.5, 20.5],
+                   "title": {"text": "Over", "font": {"size": 9, "color": "#aaa"}}},
+            yaxis={**CHART_THEME["yaxis"], "tickformat": ".0%", "range": [0, 1],
+                   "nticks": 5},
+            margin={**CHART_THEME["margin"], "l": 40},
+        )
+
+        return (
+            gauge, fig_traj,
+            f"Overs Completed · {overs_done}",
+            f"Wickets Fallen · {wickets_fallen}",
+            stats,
+        )
 
     except Exception:
-        traceback.print_exc()   # full traceback in the terminal
+        traceback.print_exc()
         from components.charts import empty_figure
+        err_fig = empty_figure("Model error - check terminal")
         return (
-            empty_figure("Model error — check terminal for traceback"),
+            err_fig, err_fig,
             "Overs Completed",
             "Wickets Fallen",
-            html.Span("Error computing probability — see terminal.", style={"fontSize": "11px", "color": "#ef4444"}),
+            html.Span("Error - see terminal.", style={"fontSize": "11px", "color": "#ef4444"}),
         )

@@ -1,7 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=Inter:wght@400;500;600;700&display=swap');
 
 /*
-  Font rule — two fonts, no exceptions:
+  Font rule - two fonts, no exceptions:
     IBM Plex Mono  →  data, numbers, stats, domain content (WHAT the app is about)
     Inter          →  UI chrome, labels, nav, buttons, descriptions (HOW you navigate)
   Dense data desktop app: all sizes -1px from the base type scale.
@@ -37,7 +37,7 @@ a {
   margin-bottom: 16px;
 }
 
-/* ── Section label — Inter, UI chrome ────────────────────────────── */
+/* ── Section label - Inter, UI chrome ────────────────────────────── */
 
 .section-label {
   font-family: 'Inter', system-ui, sans-serif;
@@ -61,7 +61,7 @@ a {
   position: relative;
 }
 
-/* Brand: Inter — it's the app name, UI chrome */
+/* Brand: Inter - it's the app name, UI chrome */
 .ciq-navbar__brand {
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 12px;
@@ -92,7 +92,7 @@ a {
   padding: 0 14px;
 }
 
-/* Stat label: Inter — it's a UI descriptor ("Matches", "Seasons") */
+/* Stat label: Inter - it's a UI descriptor ("Matches", "Seasons") */
 .ciq-navbar__stat-label {
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 9px;
@@ -103,7 +103,7 @@ a {
   line-height: 1.3;
 }
 
-/* Stat value: IBM Plex Mono — it's the actual data ("1,175", "2008–2026") */
+/* Stat value: IBM Plex Mono - it's the actual data ("1,175", "2008–2026") */
 .ciq-navbar__stat-value {
   font-family: 'IBM Plex Mono', monospace;
   font-size: 11px;
@@ -126,7 +126,7 @@ a {
   gap: 4px;
 }
 
-/* Nav links: Inter — navigation chrome */
+/* Nav links: Inter - navigation chrome */
 .ciq-navbar__nav-link,
 .ciq-navbar__nav-link:visited,
 .nav-link.ciq-navbar__nav-link {
@@ -161,7 +161,7 @@ a {
   height: 100%;
 }
 
-/* Label: Inter — describes what the number means, UI chrome */
+/* Label: Inter - describes what the number means, UI chrome */
 .metric-card__label {
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 9px;
@@ -179,19 +179,19 @@ a {
   gap: 2px;
 }
 
-/* Value: IBM Plex Mono — this IS the data */
+/* Value: IBM Plex Mono - this IS the data */
 .metric-card__value {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 29px; /* displayMD at -1px */
+  font-size: 22px;
   font-weight: 600;
   color: #111;
   line-height: 1;
 }
 
-/* Secondary value: IBM Plex Mono — also data (e.g. " runs", "/7") */
+/* Secondary value: IBM Plex Mono - also data (e.g. " runs", "/7") */
 .metric-card__secondary {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 13px; /* contentLG at -1px */
+  font-size: 11px;
   font-weight: 400;
   color: #aaa;
   margin-left: 2px;
@@ -221,7 +221,7 @@ a {
   box-shadow: none;
 }
 
-/* Chart label: Inter — UI chrome describing the chart */
+/* Chart label: Inter - UI chrome describing the chart */
 .chart-card__label {
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 9px;
@@ -256,7 +256,7 @@ a {
   flex: 1;
 }
 
-/* Tag: Inter — metadata label ("venue · date") */
+/* Tag: Inter - metadata label ("venue · date") */
 .feed-row__tag {
   font-family: 'Inter', system-ui, sans-serif;
   font-size: 9px;
@@ -264,10 +264,10 @@ a {
   margin-bottom: 2px;
 }
 
-/* Title: Inter — result description ("MI won") */
+/* Title: Inter - result description ("MI won") */
 .feed-row__title {
   font-family: 'Inter', system-ui, sans-serif;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
   color: #111;
 }
@@ -276,10 +276,10 @@ a {
   text-align: right;
 }
 
-/* Value: IBM Plex Mono — the actual result data ("24 runs", "5 wkts") */
+/* Value: IBM Plex Mono - the actual result data ("24 runs", "5 wkts") */
 .feed-row__value {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 13px; /* contentLG at -1px */
+  font-size: 11px;
   font-weight: 600;
   color: #111;
 }
@@ -290,7 +290,99 @@ a {
   color: #888;
 }
 
-/* ── Filter buttons — Inter, UI chrome ───────────────────────────── */
+/* ── Key Research Findings card ──────────────────────────────────── */
+
+.findings-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.finding-row {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.finding-row:last-child {
+  margin-bottom: 0;
+}
+
+/* Finding text: Inter - it's descriptive prose, not data */
+.finding-text {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 11px;
+  color: #333;
+  line-height: 1.5;
+}
+
+.finding-text strong {
+  font-weight: 600;
+  color: #111;
+}
+
+/* ── Toss impact block ────────────────────────────────────────────── */
+
+.toss-team-block {
+  padding: 8px 0;
+}
+
+/* Team name: Inter - it's a label, not data */
+.toss-team-name {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #333;
+  margin-bottom: 6px;
+}
+
+.toss-stat {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 3px;
+}
+
+/* "Won toss" / "Lost toss" label: Inter - UI descriptor */
+.toss-label {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 10px;
+  color: #888;
+}
+
+/* "67% (4/6)" value: IBM Plex Mono - it's data */
+.toss-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  font-weight: 400;
+  color: #111;
+}
+
+/* "+12pp" delta: IBM Plex Mono - it's a computed data value */
+.toss-delta {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 9px;
+  margin-top: 4px;
+}
+
+/* ── Cluster badge - Inter, UI chrome ────────────────────────────── */
+
+.cluster-badge {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 3px;
+  border: 1px solid;
+  white-space: nowrap;
+  margin-left: 4px;
+}
+
+/* ── Filter buttons - Inter, UI chrome ───────────────────────────── */
 
 .filter-btn {
   font-family: 'Inter', system-ui, sans-serif;
