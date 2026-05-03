@@ -42,13 +42,43 @@ _DEL_ALLTIME_LEGAL = DEL[
     (~DEL["super_over"].astype(bool)) & (~DEL["is_wide"].astype(bool))
 ]
 
+# Include wides for bowling economy (wide extras count against the bowler's economy)
+_DEL_RECENT_ALL  = DEL[(DEL["season"] >= 2021) & (~DEL["super_over"].astype(bool))]
+_DEL_ALLTIME_ALL = DEL[~DEL["super_over"].astype(bool)]
+
 _LEAGUE_AVG_SR_RECENT  = _compute_league_avgs(_DEL_RECENT_LEGAL)
 _LEAGUE_AVG_SR_ALLTIME = _compute_league_avgs(_DEL_ALLTIME_LEGAL)
 
-# Player dropdown stays 2021-26 era players (those we know are relevant).
-# Switching to "All time" shows their career stats, it doesn't change who's in the list.
-_phase_counts = _DEL_RECENT_LEGAL.groupby(["batter", "phase"]).size().reset_index(name="balls")
-_players      = sorted(_phase_counts[_phase_counts["balls"] >= 50]["batter"].unique())
+
+def _compute_league_bowl_avgs(del_all, del_legal):
+    """League avg economy per phase for bowlers with 50+ legal balls in that phase."""
+    avgs = {}
+    for ph in PHASE_ORDER:
+        ph_legal         = del_legal[del_legal["phase"] == ph]
+        ph_all           = del_all[del_all["phase"] == ph]
+        per_bowler_balls = ph_legal.groupby("bowler").size()
+        qualified        = per_bowler_balls[per_bowler_balls >= 50].index
+        if qualified.empty:
+            continue
+        runs_per_bowler  = ph_all[ph_all["bowler"].isin(qualified)].groupby("bowler")["total_runs"].sum()
+        balls_per_bowler = per_bowler_balls[per_bowler_balls.index.isin(qualified)]
+        econ_per_bowler  = runs_per_bowler / (balls_per_bowler / 6)
+        avgs[ph]         = econ_per_bowler.mean()
+    return avgs
+
+
+_LEAGUE_AVG_ECON_RECENT  = _compute_league_bowl_avgs(_DEL_RECENT_ALL, _DEL_RECENT_LEGAL)
+_LEAGUE_AVG_ECON_ALLTIME = _compute_league_bowl_avgs(_DEL_ALLTIME_ALL, _DEL_ALLTIME_LEGAL)
+
+# Player dropdown: union of batting-qualified (50+ balls faced in any phase)
+# and bowling-qualified (50+ legal balls bowled total). Without this union,
+# pure bowlers like Bumrah and Chahal are invisible in the dropdown even
+# though they have hundreds of deliveries in the dataset.
+_bat_phase_counts  = _DEL_RECENT_LEGAL.groupby(["batter", "phase"]).size().reset_index(name="balls")
+_bat_players       = set(_bat_phase_counts[_bat_phase_counts["balls"] >= 50]["batter"].unique())
+_bowl_counts       = _DEL_RECENT_LEGAL.groupby("bowler").size()
+_bowl_players      = set(_bowl_counts[_bowl_counts >= 50].index)
+_players           = sorted(_bat_players | _bowl_players)
 
 # Cluster archetype labels from k-means output in notebook 03
 _CLUSTER_LABELS = {
@@ -96,6 +126,9 @@ layout = html.Div([
         dbc.Col(html.Div(id="player-impact-chart", className="chart-card"), width=6),
     ], className="card-row"),
 
+    # Bowling section - only rendered when the player has bowled 50+ legal balls
+    html.Div(id="player-bowl-section"),
+
 ])
 
 
@@ -106,6 +139,7 @@ layout = html.Div([
     Output("player-matchup-chart", "children"),
     Output("player-cluster-badge", "children"),
     Output("player-impact-chart",  "children"),
+    Output("player-bowl-section",  "children"),
     Input("player-select",  "value"),
     Input("season-filter",  "data"),
 )
@@ -310,4 +344,215 @@ def update_player(player, season_data):
             dcc.Graph(figure=fig_imp, config={"displayModeBar": False}, style={"height": "180px"}),
         ]
 
-    return title, metrics, phase_chart, matchup_chart, cluster_badge, impact_chart
+    # ── Bowling section ───────────────────────────────────────────────
+    # All deliveries where this player bowled (wides included for run totals)
+    bowler_all = DEL[
+        (DEL["bowler"]     == player) &
+        (DEL["season"]     >= min_yr) &
+        (DEL["season"]     <= max_yr) &
+        (~DEL["super_over"].astype(bool))
+    ]
+    # Legal balls only (wides excluded) for ball count and dot ball %
+    bowler_legal      = bowler_all[~bowler_all["is_wide"].astype(bool)]
+    total_balls_bowled = len(bowler_legal)
+
+    if total_balls_bowled < 50:
+        bowl_section = []
+    else:
+        # Wicket types that count as the bowler's wicket in cricket
+        BOWLER_WKT_KINDS = {"caught", "bowled", "lbw", "caught and bowled", "stumped", "hit wicket"}
+        wkt_balls     = bowler_legal[bowler_legal["wicket"].astype(bool)]
+        total_wickets = int(wkt_balls[wkt_balls["wicket_kind"].isin(BOWLER_WKT_KINDS)].shape[0])
+
+        bowl_dots    = int(bowler_legal["is_dot"].astype(bool).sum())
+        bowl_dot_pct = round(bowl_dots / total_balls_bowled * 100, 1)
+
+        total_runs_conceded = int(bowler_all["total_runs"].sum())
+        overall_econ        = round(total_runs_conceded / (total_balls_bowled / 6), 2)
+
+        # ── Economy by phase ─────────────────────────────────────────
+        league_avgs_bowl = _LEAGUE_AVG_ECON_RECENT if min_yr >= 2021 else _LEAGUE_AVG_ECON_ALLTIME
+        econ_rows = []
+        for ph in PHASE_ORDER:
+            ph_legal = bowler_legal[bowler_legal["phase"] == ph]
+            ph_all   = bowler_all[bowler_all["phase"] == ph]
+            balls    = len(ph_legal)
+            if balls >= 6:  # at least one full over in this phase
+                econ_rows.append({
+                    "phase":   ph,
+                    "economy": ph_all["total_runs"].sum() / (balls / 6),
+                    "balls":   balls,
+                })
+
+        df_econ = (
+            pd.DataFrame(econ_rows).set_index("phase").reindex(PHASE_ORDER).dropna()
+            if econ_rows else pd.DataFrame()
+        )
+
+        fig_econ = go.Figure()
+        if not df_econ.empty:
+            fig_econ.add_trace(go.Bar(
+                x=df_econ["economy"],
+                y=df_econ.index,
+                orientation="h",
+                marker_color=[PHASE_COLORS[p] for p in df_econ.index],
+                marker_line_width=0,
+                width=0.5,
+                text=[f"{v:.2f}" for v in df_econ["economy"]],
+                textposition="outside",
+                textfont={"size": 10, "color": "#888"},
+                showlegend=False,
+            ))
+            for ph in df_econ.index:
+                if ph in league_avgs_bowl:
+                    avg = league_avgs_bowl[ph]
+                    fig_econ.add_trace(go.Scatter(
+                        x=[avg], y=[ph],
+                        mode="markers+text",
+                        marker=dict(symbol="line-ns-open", size=22, color="#ccc",
+                                    line=dict(width=2, color="#ccc")),
+                        text=[f"avg {avg:.1f}"],
+                        textposition="bottom center",
+                        textfont=dict(size=9, color="#aaa", family="IBM Plex Mono"),
+                        showlegend=False,
+                        hovertemplate=f"League avg ({ph}): {avg:.2f}<extra></extra>",
+                    ))
+
+        x_max_econ = max(
+            df_econ["economy"].max() if not df_econ.empty else 12,
+            max(league_avgs_bowl.values(), default=0),
+        ) * 1.35
+
+        fig_econ.update_layout(**CHART_THEME)
+        fig_econ.update_layout(
+            yaxis={"categoryorder": "array", "categoryarray": PHASE_ORDER[::-1]},
+            margin={**CHART_THEME["margin"], "l": 80, "r": 40},
+            xaxis={**CHART_THEME["xaxis"], "range": [0, x_max_econ]},
+        )
+
+        # ── Wicket type breakdown ─────────────────────────────────────
+        # Map raw wicket_kind values to display buckets
+        WKT_BUCKET_MAP = {
+            "caught":           "caught",
+            "caught and bowled": "caught",
+            "bowled":           "bowled",
+            "lbw":              "lbw",
+            "stumped":          "stumped",
+            "hit wicket":       "other",
+        }
+        WKT_COLORS = {
+            "caught":  "#3b82f6",
+            "bowled":  "#22c55e",
+            "lbw":     "#f97316",
+            "stumped": "#8b5cf6",
+            "other":   "#888888",
+        }
+
+        buckets = {"caught": 0, "bowled": 0, "lbw": 0, "stumped": 0, "other": 0}
+        for kind in wkt_balls["wicket_kind"]:
+            bucket = WKT_BUCKET_MAP.get(kind)
+            if bucket:
+                buckets[bucket] += 1
+
+        # Build a single stacked horizontal bar (one segment per wicket bucket)
+        fig_wkt = go.Figure()
+        for bucket in ["caught", "bowled", "lbw", "stumped", "other"]:
+            count = buckets[bucket]
+            if count == 0:
+                continue
+            fig_wkt.add_trace(go.Bar(
+                x=[count],
+                y=["Wickets"],
+                orientation="h",
+                name=bucket,
+                marker_color=WKT_COLORS[bucket],
+                marker_line_width=0,
+                text=[f"{bucket}  {count}"],
+                textposition="inside",
+                textfont={"size": 9, "color": "white"},
+                hovertemplate=f"{bucket}: {count}<extra></extra>",
+            ))
+
+        fig_wkt.update_layout(**CHART_THEME)
+        fig_wkt.update_layout(
+            barmode="stack",
+            showlegend=False,
+            yaxis={"visible": False},
+            margin={**CHART_THEME["margin"], "t": 8, "b": 8},
+        )
+
+        # ── Danger matchups (bowler's view - batters with highest SR) ─
+        danger = (
+            _matchups[_matchups["bowler"] == player]
+            .sort_values("strike_rate", ascending=False)
+            .head(5)
+        )
+
+        if danger.empty:
+            danger_chart_content = html.P(
+                "No matchup data - need 20+ balls vs a single batter.",
+                style={"fontSize": "11px", "color": "#888", "marginTop": "12px"},
+            )
+        else:
+            fig_danger = go.Figure(go.Bar(
+                x=danger["strike_rate"],
+                y=danger["batter"],
+                orientation="h",
+                marker_color="#ef4444",
+                marker_line_width=0,
+                width=0.5,
+                text=[f"{v:.0f}" for v in danger["strike_rate"]],
+                textposition="outside",
+                textfont={"size": 10, "color": "#888"},
+                customdata=danger["balls_faced"].values,
+                hovertemplate="SR: %{x:.0f}  ·  Balls: %{customdata}<extra></extra>",
+            ))
+            fig_danger.update_layout(**CHART_THEME)
+            fig_danger.update_layout(
+                yaxis={"autorange": "reversed"},
+                margin={**CHART_THEME["margin"], "l": 120, "r": 50},
+                xaxis={**CHART_THEME["xaxis"]},
+            )
+            danger_chart_content = dcc.Graph(
+                figure=fig_danger, config={"displayModeBar": False}, style={"height": "180px"}
+            )
+
+        # Assemble the full bowling section
+        bowl_section = [
+            html.Hr(className="section-divider"),
+            html.Span("Bowling", className="section-label"),
+
+            dbc.Row([
+                dbc.Col(metric_card("Wickets",      str(total_wickets),
+                                    progress=int(min(total_wickets / 50 * 100, 100)), color="blue"),  width=3),
+                dbc.Col(metric_card("Economy",      str(overall_econ),
+                                    progress=int(min(max(0, (12 - overall_econ) / 8 * 100), 100)),   color="green"), width=3),
+                dbc.Col(metric_card("Bowl Dot %",   f"{bowl_dot_pct}%",
+                                    progress=int(bowl_dot_pct),                                       color="orange"), width=3),
+                dbc.Col(metric_card("Balls Bowled", str(total_balls_bowled),
+                                    progress=int(min(total_balls_bowled / 500 * 100, 100)),           color="red"),  width=3),
+            ], className="card-row"),
+
+            dbc.Row([
+                dbc.Col(html.Div([
+                    html.Span("Economy by Phase  ·  tick = league avg", className="chart-card__label"),
+                    dcc.Graph(figure=fig_econ, config={"displayModeBar": False}, style={"height": "180px"}),
+                ], className="chart-card"), width=6),
+                dbc.Col(html.Div([
+                    html.Span("Wicket Type Breakdown", className="chart-card__label"),
+                    dcc.Graph(figure=fig_wkt, config={"displayModeBar": False}, style={"height": "80px"}),
+                ], className="chart-card"), width=6),
+            ], className="card-row"),
+
+            dbc.Row([
+                dbc.Col(html.Div([
+                    html.Span(
+                        "Danger Matchups · batters with highest SR vs this bowler · 2021-26",
+                        className="chart-card__label",
+                    ),
+                    danger_chart_content,
+                ], className="chart-card"), width=6),
+            ], className="card-row"),
+        ]
+
+    return title, metrics, phase_chart, matchup_chart, cluster_badge, impact_chart, bowl_section

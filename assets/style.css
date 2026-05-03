@@ -442,6 +442,14 @@ a {
   border-color: #666;
 }
 
+/* ── Section divider - separates batting and bowling on player page ── */
+
+.section-divider {
+  border: none;
+  border-top: 1px solid #e5e5e5;
+  margin: 8px 0 16px;
+}
+
 /* ── H2H match feed scroll container ─────────────────────────────── */
 
 .h2h-feed-scroll {
