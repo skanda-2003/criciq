@@ -1,19 +1,18 @@
 import dash
 from dash import html, dcc, callback, Input, Output
 import dash_bootstrap_components as dbc
-import pandas as pd
 import plotly.graph_objects as go
 
 from components.charts import win_probability_gauge, CHART_THEME
 from src.wp_model import predict_prob, FEATURES
+from data.loader import DEL
 
 dash.register_page(__name__, path="/simulator", name="Match Simulator", title="CricIQ - Simulator")
 
 # ── Load team list at server start ───────────────────────────────────
 # The model itself is trained in src/wp_model.py and cached there - importing
 # it above is all that's needed. No re-training happens here.
-_del   = pd.read_csv("data/processed/deliveries.csv")
-_TEAMS = sorted(_del["batting_team"].dropna().unique())
+_TEAMS = sorted(DEL["batting_team"].dropna().unique())
 
 # ── Input field style ────────────────────────────────────────────────
 _INPUT_STYLE = {

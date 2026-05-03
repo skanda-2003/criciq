@@ -6,161 +6,51 @@ import plotly.graph_objects as go
 
 from components.metric_card import metric_card
 from components.charts import CHART_THEME
+from src.name_map import get_full_name as _display_name
+from data.loader import DEL
 
 dash.register_page(__name__, path="/player", name="Player Deep-Dive", title="CricIQ - Player")
 
-# ── Load data at server start ────────────────────────────────────────
-_phase    = pd.read_csv("data/processed/phase_batting.csv")
+# ── Per-player pre-computed data (matchups + cluster stay 2021-26) ───
 _matchups = pd.read_csv("data/processed/bowler_matchups.csv")
-_profiles = pd.read_csv("data/processed/batsman_profiles.csv")  # k-means cluster per batsman
-_impact   = pd.read_csv("data/processed/player_impact_season.csv")  # season-level impact scores
-
-# Cricsheet uses abbreviated names (e.g. "A Badoni") - this maps them to full names
-# so the dropdown shows the full name and search works with either first name or surname
-_FULL_NAMES = {
-    "A Badoni": "Ayush Badoni",
-    "A Manohar": "Atharva Manohar",
-    "A Mhatre": "Angkrish Mhatre",
-    "A Raghuvanshi": "Ayush Raghuvanshi",
-    "AB de Villiers": "AB de Villiers",
-    "AD Russell": "Andre Russell",
-    "AK Markram": "Aiden Markram",
-    "AM Rahane": "Ajinkya Rahane",
-    "AR Patel": "Axar Patel",
-    "AT Rayudu": "Ambati Rayudu",
-    "B Kumar": "Bhuvneshwar Kumar",
-    "B Sai Sudharsan": "B Sai Sudharsan",
-    "C Green": "Cameron Green",
-    "CH Gayle": "Chris Gayle",
-    "D Brevis": "Dewald Brevis",
-    "D Ferreira": "Donovan Ferreira",
-    "D Padikkal": "Devdutt Padikkal",
-    "DA Miller": "David Miller",
-    "DA Warner": "David Warner",
-    "DJ Hooda": "Deepak Hooda",
-    "DJ Mitchell": "Daryl Mitchell",
-    "DP Conway": "Devon Conway",
-    "E Lewis": "Evin Lewis",
-    "EJG Morgan": "Eoin Morgan",
-    "F du Plessis": "Faf du Plessis",
-    "GD Phillips": "Glenn Phillips",
-    "GJ Maxwell": "Glenn Maxwell",
-    "H Klaasen": "Heinrich Klaasen",
-    "HC Brook": "Harry Brook",
-    "HH Pandya": "Hardik Pandya",
-    "HV Patel": "Harshal Patel",
-    "J Fraser-McGurk": "Jake Fraser-McGurk",
-    "J Overton": "Jamie Overton",
-    "JC Buttler": "Jos Buttler",
-    "JD Unadkat": "Jaydev Unadkat",
-    "JG Bethell": "Jacob Bethell",
-    "JJ Roy": "Jason Roy",
-    "JM Bairstow": "Jonny Bairstow",
-    "JM Sharma": "Mohit Sharma",
-    "JO Holder": "Jason Holder",
-    "JP Inglis": "Josh Inglis",
-    "K Rabada": "Kagiso Rabada",
-    "KA Pollard": "Kieron Pollard",
-    "KD Karthik": "Dinesh Karthik",
-    "KH Pandya": "Krunal Pandya",
-    "KK Nair": "Karun Nair",
-    "KL Rahul": "KL Rahul",
-    "KR Mayers": "Kyle Mayers",
-    "KS Bharat": "KS Bharat",
-    "KS Williamson": "Kane Williamson",
-    "LS Livingstone": "Liam Livingstone",
-    "M Jansen": "Marco Jansen",
-    "M Shahrukh Khan": "M Shahrukh Khan",
-    "M Vohra": "Manan Vohra",
-    "MA Agarwal": "Mayank Agarwal",
-    "MD Choudhary": "Mukesh Choudhary",
-    "MJ Santner": "Mitchell Santner",
-    "MK Lomror": "Mahipal Lomror",
-    "MK Pandey": "Manish Pandey",
-    "MM Ali": "Moeen Ali",
-    "MP Stoinis": "Marcus Stoinis",
-    "MR Marsh": "Mitchell Marsh",
-    "MS Dhoni": "MS Dhoni",
-    "MS Wade": "Matthew Wade",
-    "MW Short": "Matt Short",
-    "N Jagadeesan": "Narayan Jagadeesan",
-    "N Pooran": "Nicholas Pooran",
-    "N Rana": "Nitish Rana",
-    "N Wadhera": "Nishant Wadhera",
-    "P Nissanka": "Pathum Nissanka",
-    "PBB Rajapaksa": "Bhanuka Rajapaksa",
-    "PD Salt": "Phil Salt",
-    "PJ Cummins": "Pat Cummins",
-    "PP Shaw": "Prithvi Shaw",
-    "Q de Kock": "Quinton de Kock",
-    "R Ashwin": "Ravichandran Ashwin",
-    "R Parag": "Riyan Parag",
-    "R Powell": "Rovman Powell",
-    "R Ravindra": "Rachin Ravindra",
-    "R Shepherd": "Romario Shepherd",
-    "R Tewatia": "Rahul Tewatia",
-    "RA Jadeja": "Ravindra Jadeja",
-    "RA Tripathi": "Rahul Tripathi",
-    "RD Chahar": "Deepak Chahar",
-    "RD Gaikwad": "Ruturaj Gaikwad",
-    "RD Rickelton": "Ryan Rickelton",
-    "RG Sharma": "Rohit Sharma",
-    "RM Patidar": "Rajat Patidar",
-    "RR Pant": "Rishabh Pant",
-    "RR Rossouw": "Rilee Rossouw",
-    "RV Uthappa": "Robin Uthappa",
-    "S Dhawan": "Shikhar Dhawan",
-    "S Dube": "Shivam Dube",
-    "SA Yadav": "Suryakumar Yadav",
-    "SB Dubey": "Saurabh Dubey",
-    "SD Hope": "Shai Hope",
-    "SK Raina": "Suresh Raina",
-    "SM Curran": "Sam Curran",
-    "SN Thakur": "Shardul Thakur",
-    "SO Hetmyer": "Shimron Hetmyer",
-    "SP Narine": "Sunil Narine",
-    "SPD Smith": "Steve Smith",
-    "SS Iyer": "Shreyas Iyer",
-    "SS Tiwary": "Saurabh Tiwary",
-    "SV Samson": "Sanju Samson",
-    "SW Billings": "Sam Billings",
-    "T Kohler-Cadmore": "Tom Kohler-Cadmore",
-    "T Stubbs": "Tristan Stubbs",
-    "TA Boult": "Trent Boult",
-    "TH David": "Tim David",
-    "TM Head": "Travis Head",
-    "UT Yadav": "Umesh Yadav",
-    "V Kohli": "Virat Kohli",
-    "V Shankar": "Vijay Shankar",
-    "V Suryavanshi": "Vaibhav Suryavanshi",
-    "VR Iyer": "Venkatesh Iyer",
-    "WG Jacks": "Will Jacks",
-    "WP Saha": "Wriddhiman Saha",
-    "YBK Jaiswal": "Yashasvi Jaiswal",
-}
-
-def _display_name(short: str) -> str:
-    return _FULL_NAMES.get(short, short)
-
-# Players with at least 50 balls in any single phase
-_players = sorted(_phase[_phase["balls_faced"] >= 50]["batter"].unique())
+_profiles = pd.read_csv("data/processed/batsman_profiles.csv")
+_impact   = pd.read_csv("data/processed/player_impact_season.csv")
 
 PHASE_ORDER  = ["powerplay", "middle", "death"]
 PHASE_COLORS = {"powerplay": "#3b82f6", "middle": "#22c55e", "death": "#f97316"}
 
-# League average SR per phase - weighted (total runs / total balls * 100) across all 50+ ball qualifiers
-# This is the "average qualified batsman" for each phase, used as a reference line
-_LEAGUE_AVG_SR = {}
-for _p in PHASE_ORDER:
-    _pf = _phase[(_phase["phase"] == _p) & (_phase["balls_faced"] >= 50)]
-    if not _pf.empty:
-        _LEAGUE_AVG_SR[_p] = _pf["runs_scored"].sum() / _pf["balls_faced"].sum() * 100
+# ── Pre-compute league averages for both season windows ──────────────
+# Runs once at startup. The callback picks the right dict based on the store.
+# League avg SR is weighted: total batter_runs / total legal balls, for players
+# with 50+ balls in that phase (same threshold as the player leaderboards).
+def _compute_league_avgs(del_legal):
+    avgs = {}
+    for ph in PHASE_ORDER:
+        ph_del     = del_legal[del_legal["phase"] == ph]
+        per_player = ph_del.groupby("batter").size()
+        qualified  = per_player[per_player >= 50].index
+        q          = ph_del[ph_del["batter"].isin(qualified)]
+        if len(q) > 0:
+            avgs[ph] = q["batter_runs"].sum() / len(q) * 100
+    return avgs
 
-# Cluster labels derived from inspecting the k-means output in notebook 03
-# Cluster 0: high SR (~141), very low dismissal rate (~2.6%) - consistent and hard to dismiss
-# Cluster 1: high SR (~143), high dismissal rate (~4.4%) - aggressive risk-takers
-# Cluster 2: lower SR (~127), fewer boundaries - steady builders
-# Cluster 3: very high SR (~169), very high boundary rate - pure power hitters
+
+_DEL_RECENT_LEGAL  = DEL[
+    (DEL["season"] >= 2021) & (~DEL["super_over"].astype(bool)) & (~DEL["is_wide"].astype(bool))
+]
+_DEL_ALLTIME_LEGAL = DEL[
+    (~DEL["super_over"].astype(bool)) & (~DEL["is_wide"].astype(bool))
+]
+
+_LEAGUE_AVG_SR_RECENT  = _compute_league_avgs(_DEL_RECENT_LEGAL)
+_LEAGUE_AVG_SR_ALLTIME = _compute_league_avgs(_DEL_ALLTIME_LEGAL)
+
+# Player dropdown stays 2021-26 era players (those we know are relevant).
+# Switching to "All time" shows their career stats, it doesn't change who's in the list.
+_phase_counts = _DEL_RECENT_LEGAL.groupby(["batter", "phase"]).size().reset_index(name="balls")
+_players      = sorted(_phase_counts[_phase_counts["balls"] >= 50]["batter"].unique())
+
+# Cluster archetype labels from k-means output in notebook 03
 _CLUSTER_LABELS = {
     0: ("Consistent Striker", "#22c55e"),
     1: ("Aggressive Hitter",  "#f97316"),
@@ -171,15 +61,13 @@ _CLUSTER_LABELS = {
 # ── Layout ───────────────────────────────────────────────────────────
 layout = html.Div([
 
-    html.Span("Player Deep-Dive · 2021–2026", className="section-label"),
+    html.Span(id="player-title", className="section-label"),
 
-    # Row 1: player dropdown + cluster badge (badge fills in via callback)
+    # Row 1: player dropdown + cluster badge
     dbc.Row([
         dbc.Col(
             dcc.Dropdown(
                 id="player-select",
-                # label shows full name, value stays as the Cricsheet abbreviated name
-                # so searching "Ayush" or "Badoni" or "Ayush Badoni" all match "A Badoni"
                 options=[{"label": _display_name(p), "value": p} for p in _players],
                 value=_players[0],
                 clearable=False,
@@ -197,13 +85,13 @@ layout = html.Div([
     # Row 2: summary metric cards
     dbc.Row(id="player-metrics", className="card-row"),
 
-    # Row 3: phase SR chart (with league avg reference) + matchup chart
+    # Row 3: phase SR chart + matchup chart
     dbc.Row([
         dbc.Col(html.Div(id="player-phase-chart",   className="chart-card"), width=6),
         dbc.Col(html.Div(id="player-matchup-chart", className="chart-card"), width=6),
     ], className="card-row"),
 
-    # Row 4: impact score trend across seasons
+    # Row 4: impact score trend
     dbc.Row([
         dbc.Col(html.Div(id="player-impact-chart", className="chart-card"), width=6),
     ], className="card-row"),
@@ -212,70 +100,105 @@ layout = html.Div([
 
 
 @callback(
+    Output("player-title",         "children"),
     Output("player-metrics",       "children"),
     Output("player-phase-chart",   "children"),
     Output("player-matchup-chart", "children"),
     Output("player-cluster-badge", "children"),
     Output("player-impact-chart",  "children"),
-    Input("player-select", "value"),
+    Input("player-select",  "value"),
+    Input("season-filter",  "data"),
 )
-def update_player(player):
-    df = _phase[_phase["batter"] == player]
+def update_player(player, season_data):
+    min_yr = season_data["min"]
+    max_yr = season_data["max"]
+
+    # Legal balls for this player in the selected window (wides excluded throughout)
+    player_legal = DEL[
+        (DEL["batter"]     == player) &
+        (DEL["season"]     >= min_yr) &
+        (DEL["season"]     <= max_yr) &
+        (~DEL["super_over"].astype(bool)) &
+        (~DEL["is_wide"]   .astype(bool))
+    ]
+
+    # League averages for the selected window
+    league_avgs = _LEAGUE_AVG_SR_RECENT if min_yr >= 2021 else _LEAGUE_AVG_SR_ALLTIME
+
+    title = "Player Deep-Dive · All Time (2008-2026)" if min_yr <= 2008 else f"Player Deep-Dive · {min_yr}-{max_yr}"
 
     # ── Metric cards ─────────────────────────────────────────────────
-    total_balls      = df["balls_faced"].sum()
-    total_runs       = df["runs_scored"].sum()
-    total_boundaries = df["boundaries"].sum()
-    total_dots       = df["dots"].sum()
+    total_balls      = len(player_legal)
+    total_runs       = int(player_legal["batter_runs"].sum())
+    total_boundaries = int(
+        (player_legal["is_boundary_4"].astype(bool) | player_legal["is_boundary_6"].astype(bool)).sum()
+    )
+    total_dots = int(player_legal["is_dot"].astype(bool).sum())
 
     sr   = round(total_runs / total_balls * 100, 1) if total_balls > 0 else 0
     bpct = round(total_boundaries / total_balls * 100, 1) if total_balls > 0 else 0
-    dpct = round(total_dots / total_balls * 100, 1) if total_balls > 0 else 0
+    dpct = round(total_dots       / total_balls * 100, 1) if total_balls > 0 else 0
 
     metrics = [
-        dbc.Col(metric_card("Strike Rate", str(sr),          progress=int(min(sr / 200 * 100, 100)),         color="blue"),   width=3),
+        dbc.Col(metric_card("Strike Rate", str(sr),          progress=int(min(sr / 200 * 100, 100)),          color="blue"),   width=3),
         dbc.Col(metric_card("Balls Faced", str(total_balls), progress=int(min(total_balls / 500 * 100, 100)), color="green"),  width=3),
-        dbc.Col(metric_card("Boundary %",  f"{bpct}%",       progress=int(min(bpct / 40 * 100, 100)),         color="orange"), width=3),
-        dbc.Col(metric_card("Dot Ball %",  f"{dpct}%",       progress=int(dpct),                              color="red"),    width=3),
+        dbc.Col(metric_card("Boundary %",  f"{bpct}%",       progress=int(min(bpct / 40 * 100, 100)),          color="orange"), width=3),
+        dbc.Col(metric_card("Dot Ball %",  f"{dpct}%",       progress=int(dpct),                               color="red"),    width=3),
     ]
 
-    # ── Phase SR chart with league average reference lines (E) ────────
-    df_ph = df[df["phase"].isin(PHASE_ORDER)].set_index("phase").reindex(PHASE_ORDER).dropna()
+    # ── Phase SR chart ────────────────────────────────────────────────
+    # Computed from DEL directly so this responds to the season filter.
+    phase_rows = []
+    for ph in PHASE_ORDER:
+        ph_del = player_legal[player_legal["phase"] == ph]
+        balls  = len(ph_del)
+        if balls > 0:
+            phase_rows.append({
+                "phase":       ph,
+                "strike_rate": ph_del["batter_runs"].sum() / balls * 100,
+                "balls_faced": balls,
+            })
+
+    df_ph = (
+        pd.DataFrame(phase_rows).set_index("phase").reindex(PHASE_ORDER).dropna()
+        if phase_rows else pd.DataFrame()
+    )
 
     fig_phase = go.Figure()
 
-    # Player's actual SR bars
-    fig_phase.add_trace(go.Bar(
-        x=df_ph["strike_rate"],
-        y=df_ph.index,
-        orientation="h",
-        marker_color=[PHASE_COLORS[p] for p in df_ph.index],
-        marker_line_width=0,
-        width=0.5,
-        text=[f"{v:.0f}" for v in df_ph["strike_rate"]],
-        textposition="outside",
-        textfont={"size": 10, "color": "#888"},
-        showlegend=False,
-    ))
+    if not df_ph.empty:
+        fig_phase.add_trace(go.Bar(
+            x=df_ph["strike_rate"],
+            y=df_ph.index,
+            orientation="h",
+            marker_color=[PHASE_COLORS[p] for p in df_ph.index],
+            marker_line_width=0,
+            width=0.5,
+            text=[f"{v:.0f}" for v in df_ph["strike_rate"]],
+            textposition="outside",
+            textfont={"size": 10, "color": "#888"},
+            showlegend=False,
+        ))
 
-    # League average markers - vertical tick at the league avg SR for each phase
-    # This shows at a glance whether the player is above or below the typical qualified batsman
-    for phase in df_ph.index:
-        if phase in _LEAGUE_AVG_SR:
-            fig_phase.add_trace(go.Scatter(
-                x=[_LEAGUE_AVG_SR[phase]],
-                y=[phase],
-                mode="markers+text",
-                marker=dict(symbol="line-ns-open", size=22, color="#ccc", line=dict(width=2, color="#ccc")),
-                text=[f"avg {_LEAGUE_AVG_SR[phase]:.0f}"],
-                textposition="bottom center",
-                textfont=dict(size=9, color="#aaa", family="IBM Plex Mono"),
-                showlegend=False,
-                hovertemplate=f"League avg ({phase}): {_LEAGUE_AVG_SR[phase]:.0f}<extra></extra>",
-            ))
+        for phase in df_ph.index:
+            if phase in league_avgs:
+                fig_phase.add_trace(go.Scatter(
+                    x=[league_avgs[phase]],
+                    y=[phase],
+                    mode="markers+text",
+                    marker=dict(symbol="line-ns-open", size=22, color="#ccc",
+                                line=dict(width=2, color="#ccc")),
+                    text=[f"avg {league_avgs[phase]:.0f}"],
+                    textposition="bottom center",
+                    textfont=dict(size=9, color="#aaa", family="IBM Plex Mono"),
+                    showlegend=False,
+                    hovertemplate=f"League avg ({phase}): {league_avgs[phase]:.0f}<extra></extra>",
+                ))
 
-    x_max = max(df_ph["strike_rate"].max() if not df_ph.empty else 200,
-                max(_LEAGUE_AVG_SR.values(), default=0)) * 1.35
+    x_max = max(
+        df_ph["strike_rate"].max() if not df_ph.empty else 200,
+        max(league_avgs.values(), default=0),
+    ) * 1.35
 
     fig_phase.update_layout(**CHART_THEME)
     fig_phase.update_layout(
@@ -289,7 +212,7 @@ def update_player(player):
         dcc.Graph(figure=fig_phase, config={"displayModeBar": False}, style={"height": "180px"}),
     ]
 
-    # ── Matchup chart ─────────────────────────────────────────────────
+    # ── Matchup chart - pre-computed 2021-26, does not change with filter ──
     bm = (
         _matchups[_matchups["batter"] == player]
         .sort_values("dismissal_prob", ascending=False)
@@ -298,7 +221,7 @@ def update_player(player):
 
     if bm.empty:
         matchup_chart = [
-            html.Span("Bowler Matchups", className="chart-card__label"),
+            html.Span("Bowler Matchups · 2021-26", className="chart-card__label"),
             html.P("No matchup data - need 20+ balls vs a single bowler.",
                    style={"fontSize": "11px", "color": "#888", "marginTop": "12px"}),
         ]
@@ -310,8 +233,6 @@ def update_player(player):
             marker_color="#3b82f6",
             marker_line_width=0,
             width=0.5,
-            # dismissal_prob is stored as a percentage (e.g. 4.17 = 4.17%), not a decimal
-            # using :.0% would multiply by 100 again - use :.1f% instead
             text=[f"{v:.1f}%" for v in bm["dismissal_prob"]],
             textposition="outside",
             textfont={"size": 10, "color": "#888"},
@@ -320,20 +241,18 @@ def update_player(player):
         fig_match.update_layout(
             yaxis={"autorange": "reversed"},
             margin={**CHART_THEME["margin"], "l": 120, "r": 50},
-            # axis shows raw percentage values (0-20), so append % without multiplying
             xaxis={**CHART_THEME["xaxis"], "ticksuffix": "%"},
         )
         matchup_chart = [
-            html.Span("Dismissal Probability by Bowler", className="chart-card__label"),
+            html.Span("Dismissal Probability by Bowler · 2021-26", className="chart-card__label"),
             dcc.Graph(figure=fig_match, config={"displayModeBar": False}, style={"height": "180px"}),
         ]
 
-    # ── Cluster badge (D) ─────────────────────────────────────────────
-    # Only 36 batsmen qualified for clustering (20+ ball matchups vs multiple bowlers)
+    # ── Cluster badge - pre-computed 2021-26, does not change with filter ──
     profile_row = _profiles[_profiles["batter"] == player]
     if not profile_row.empty:
-        cluster_id = int(profile_row.iloc[0]["cluster"])
-        label, color = _CLUSTER_LABELS[cluster_id]
+        cluster_id    = int(profile_row.iloc[0]["cluster"])
+        label, color  = _CLUSTER_LABELS[cluster_id]
         cluster_badge = html.Span(
             label,
             className="cluster-badge",
@@ -346,8 +265,12 @@ def update_player(player):
             style={"backgroundColor": "#f5f5f5", "color": "#bbb", "borderColor": "#e5e5e5"},
         )
 
-    # ── Impact Score trend by season (C) ─────────────────────────────
-    imp = _impact[_impact["player"] == player].sort_values("season")
+    # ── Impact score trend ────────────────────────────────────────────
+    imp = _impact[
+        (_impact["player"] == player) &
+        (_impact["season"] >= min_yr) &
+        (_impact["season"] <= max_yr)
+    ].sort_values("season")
 
     if imp.empty:
         impact_chart = [
@@ -356,7 +279,6 @@ def update_player(player):
                    style={"fontSize": "11px", "color": "#888", "marginTop": "12px"}),
         ]
     else:
-        # Color each bar by sign: positive (above avg) = blue, negative = red
         bar_colors = ["#3b82f6" if v >= 0 else "#ef4444" for v in imp["avg_impact"]]
         seasons    = [str(int(s)) for s in imp["season"]]
 
@@ -372,11 +294,9 @@ def update_player(player):
             hovertemplate="%{x}: <b>%{y:+.2f}</b><br>Matches: %{customdata}<extra></extra>",
         ))
 
-        # Horizontal reference line at y=0 (league average)
         fig_imp.add_hline(y=0, line_dash="dot", line_color="#e5e5e5", line_width=1)
 
-        # Extend y range so labels don't clip
-        y_abs = imp["avg_impact"].abs().max()
+        y_abs   = imp["avg_impact"].abs().max()
         y_range = [-(y_abs * 1.5), y_abs * 1.5]
 
         fig_imp.update_layout(**CHART_THEME)
@@ -386,8 +306,8 @@ def update_player(player):
         )
 
         impact_chart = [
-            html.Span("Impact Score by Season  ·  0 = league average", className="chart-card__label"),
+            html.Span("Impact Score by Season · 2021-26  ·  0 = league average", className="chart-card__label"),
             dcc.Graph(figure=fig_imp, config={"displayModeBar": False}, style={"height": "180px"}),
         ]
 
-    return metrics, phase_chart, matchup_chart, cluster_badge, impact_chart
+    return title, metrics, phase_chart, matchup_chart, cluster_badge, impact_chart

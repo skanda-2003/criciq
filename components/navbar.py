@@ -1,5 +1,6 @@
 from dash import html
 import dash_bootstrap_components as dbc
+import dash
 
 
 def _stat_block(label, value):
@@ -45,5 +46,11 @@ def create_navbar():
             dbc.NavLink("Simulator",    href="/simulator",    active="exact", className="ciq-navbar__nav-link"),
             dbc.NavLink("Head-to-Head", href="/head-to-head", active="exact", className="ciq-navbar__nav-link"),
         ], className="ciq-navbar__nav"),
+
+        # Season filter toggle - persists across all pages via dcc.Store in app.py
+        html.Div([
+            html.Button("2021-26", id="btn-season-recent", className="season-btn season-btn--active", n_clicks=0),
+            html.Button("All time", id="btn-season-all",   className="season-btn",                    n_clicks=0),
+        ], className="ciq-navbar__season-toggle"),
 
     ], className="ciq-navbar")
