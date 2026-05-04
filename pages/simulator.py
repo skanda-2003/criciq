@@ -9,10 +9,47 @@ from data.loader import DEL
 
 dash.register_page(__name__, path="/simulator", name="Match Simulator", title="CricIQ - Simulator")
 
-# ── Load team list at server start ───────────────────────────────────
-# The model itself is trained in src/wp_model.py and cached there - importing
-# it above is all that's needed. No re-training happens here.
-_TEAMS = sorted(DEL["batting_team"].dropna().unique())
+# ── Team name normalisation ───────────────────────────────────────────
+# Several franchises have been renamed or have a spelling variant in Cricsheet.
+# Map every old name to the current canonical name so the dropdown has no duplicates
+# and the historical lookup works correctly regardless of which era a match is from.
+_TEAM_ALIASES = {
+    "Royal Challengers Bangalore": "Royal Challengers Bengaluru",
+    "Rising Pune Supergiant":      "Rising Pune Supergiants",
+    "Delhi Daredevils":            "Delhi Capitals",
+    "Kings XI Punjab":             "Punjab Kings",
+}
+
+def _norm_team(name: str) -> str:
+    return _TEAM_ALIASES.get(name, name)
+
+_TEAMS = sorted({_norm_team(t) for t in DEL["batting_team"].dropna().unique()})
+
+# ── Pre-compute chase-state lookup table ─────────────────────────────
+# For each over in each 2nd innings, take the first legal ball as the
+# over-entry state (ball_in_over == 1). Compute three match keys:
+#   rn     = runs still needed to win
+#   wih    = wickets in hand (10 - cumulative_wickets)
+#   ov_rem = overs remaining (21 - over, since over is 1-indexed)
+# batting_team is normalised so historical records for renamed franchises
+# (e.g. Delhi Daredevils + Delhi Capitals) are combined under the current name.
+_CHASE_STATES = (
+    DEL[
+        (DEL["innings"] == 2) &
+        (~DEL["super_over"].astype(bool)) &
+        (DEL["target_runs"].notna()) &
+        (DEL["ball_in_over"] == 1)
+    ]
+    .assign(
+        rn          = lambda d: d["target_runs"] - d["cumulative_runs"],
+        wih         = lambda d: 10 - d["cumulative_wickets"],
+        ov_rem      = lambda d: 21 - d["over"],
+        batting_won = lambda d: d["match_winner"] == d["batting_team"],
+        team        = lambda d: d["batting_team"].map(_norm_team),
+    )
+    [["rn", "wih", "ov_rem", "batting_won", "team"]]
+    .reset_index(drop=True)
+)
 
 # ── Input field style ────────────────────────────────────────────────
 _INPUT_STYLE = {
@@ -98,6 +135,11 @@ layout = html.Div([
         ], className="chart-card"), width=4),
     ], className="card-row"),
 
+    # Row 4: historical base rate - how often did teams in a similar situation win?
+    dbc.Row([
+        dbc.Col(html.Div(id="sim-base-rate", className="chart-card"), width=12),
+    ], className="card-row"),
+
 ])
 
 
@@ -126,6 +168,7 @@ def _whatif_content(scenario_prob, current_prob):
     Output("sim-whatif-wicket",   "children"),
     Output("sim-whatif-boundary", "children"),
     Output("sim-whatif-dot",      "children"),
+    Output("sim-base-rate",       "children"),
     Input("sim-target",  "value"),
     Input("sim-score",   "value"),
     Input("sim-overs",   "value"),
@@ -324,6 +367,46 @@ def update_simulator(target, score, overs_done, wickets_fallen, team):
             margin={**CHART_THEME["margin"], "l": 40},
         )
 
+        # ── Historical base rate (team-specific) ─────────────────────
+        # Filter to the selected team so the number reflects that franchise's
+        # actual chasing record, not the league average.
+        # This is what makes the team dropdown meaningful - the model probability
+        # is team-agnostic, but this number is not.
+        norm_team = _norm_team(team)
+        similar   = _CHASE_STATES[_CHASE_STATES["team"] == norm_team]
+        matched   = similar[
+            (similar["rn"]     >= runs_needed     - 10) &
+            (similar["rn"]     <= runs_needed     + 10) &
+            (similar["wih"]    >= wickets_in_hand - 1)  &
+            (similar["wih"]    <= wickets_in_hand + 1)  &
+            (similar["ov_rem"] >= overs_remaining - 2)  &
+            (similar["ov_rem"] <= overs_remaining + 2)
+        ]
+        n = len(matched)
+        if n > 0:
+            win_pct = matched["batting_won"].mean()
+            base_rate = [
+                html.Span(f"Historical Context · {norm_team}", className="chart-card__label"),
+                html.Div([
+                    html.Span(f"In {n}", className="base-rate__value"),
+                    html.Span(
+                        " similar chasing situations (±10 runs, ±1 wicket, ±2 overs), ",
+                        className="base-rate__text",
+                    ),
+                    html.Span(norm_team, className="base-rate__text"),
+                    html.Span(" won ", className="base-rate__text"),
+                    html.Span(f"{win_pct:.0%}", className="base-rate__value"),
+                ]),
+            ]
+        else:
+            base_rate = [
+                html.Span(f"Historical Context · {norm_team}", className="chart-card__label"),
+                html.Span(
+                    "No matching historical situations for this team",
+                    className="base-rate__text",
+                ),
+            ]
+
         return (
             gauge, fig_traj,
             f"Overs Completed · {overs_done}",
@@ -332,6 +415,7 @@ def update_simulator(target, score, overs_done, wickets_fallen, team):
             _whatif_content(prob_wicket,   prob),
             _whatif_content(prob_boundary, prob),
             _whatif_content(prob_dot,      prob),
+            base_rate,
         )
 
     except Exception:
@@ -344,5 +428,5 @@ def update_simulator(target, score, overs_done, wickets_fallen, team):
             "Overs Completed",
             "Wickets Fallen",
             html.Span("Error - see terminal.", style={"fontSize": "11px", "color": "#ef4444"}),
-            err_text, err_text, err_text,
+            err_text, err_text, err_text, err_text,
         )

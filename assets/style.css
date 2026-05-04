@@ -551,6 +551,23 @@ a {
   border-radius: 2px;
 }
 
+/* ── Historical base rate card (Simulator page) ─────────────────── */
+
+/* Number values: IBM Plex Mono - they're data points */
+.base-rate__value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  font-weight: 600;
+  color: #111;
+}
+
+/* Connecting prose: Inter - it's descriptive text */
+.base-rate__text {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 11px;
+  color: #888;
+}
+
 /* ── What-if scenario cards (Simulator page) ─────────────────────── */
 
 /* Big probability number: IBM Plex Mono - it's the data point */
