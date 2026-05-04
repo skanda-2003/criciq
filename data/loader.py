@@ -9,3 +9,12 @@ _PROCESSED = Path(__file__).parent / "processed"
 # `from data.loader import DEL` gets the same object - no re-reading from disk.
 DEL = pd.read_csv(_PROCESSED / "deliveries.csv")
 MAT = pd.read_csv(_PROCESSED / "matches.csv")
+
+# Cast all boolean flag columns once here so every page gets real bool dtype
+# and never needs .astype(bool) again. Pandas reads 0/1 CSV columns as int64;
+# casting here means filters like ~DEL["is_wide"] and DEL["wicket"] work directly.
+_BOOL_COLS = ["super_over", "is_wide", "is_noball", "is_boundary_4", "is_boundary_6",
+              "is_dot", "wicket"]
+for _col in _BOOL_COLS:
+    if _col in DEL.columns:
+        DEL[_col] = DEL[_col].astype(bool)

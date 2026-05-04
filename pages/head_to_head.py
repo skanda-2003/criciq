@@ -8,19 +8,9 @@ from components.metric_card import metric_card
 from components.charts import CHART_THEME
 from src.wp_model import predict_prob
 from data.loader import DEL, MAT
+from src.constants import TEAM_RENAME as _RENAME
 
 dash.register_page(__name__, path="/head-to-head", name="Head-to-Head", title="CricIQ - Head to Head")
-
-# ── Static reference data ────────────────────────────────────────────
-# All four franchises that were renamed - maps old Cricsheet name to current.
-# Applying this ensures historical matches from old-name eras show up correctly
-# when a user selects the current name from the dropdown.
-_RENAME = {
-    "Royal Challengers Bangalore": "Royal Challengers Bengaluru",
-    "Rising Pune Supergiant":      "Rising Pune Supergiants",
-    "Delhi Daredevils":            "Delhi Capitals",
-    "Kings XI Punjab":             "Punjab Kings",
-}
 
 # Build team list from the full MAT (all seasons) so the dropdown works for
 # both 2021-26 and all-time mode without missing historical franchises
@@ -115,7 +105,7 @@ def update_h2h(team_a, team_b, season_data):
     mat_f = MAT[(MAT["season"] >= min_yr) & (MAT["season"] <= max_yr)].copy()
     del_f = DEL[
         (DEL["season"] >= min_yr) & (DEL["season"] <= max_yr) &
-        (~DEL["super_over"].astype(bool))
+        (~DEL["super_over"])
     ].copy()
 
     for col in ["team1", "team2", "winner", "toss_winner"]:
@@ -328,7 +318,7 @@ def update_h2h(team_a, team_b, season_data):
     # ── Star performer cards ─────────────────────────────────────────
     # Highest run-scorer and most wickets across all H2H matches in the window.
     h2h_del_all = del_f[del_f["match_id"].isin(match_ids)]
-    h2h_legal   = h2h_del_all[~h2h_del_all["is_wide"].astype(bool)]
+    h2h_legal   = h2h_del_all[~h2h_del_all["is_wide"]]
 
     # Top scorer: group by batter, sum runs + count legal balls for SR
     bat_grp   = h2h_legal.groupby("batter").agg(runs=("batter_runs", "sum"), balls=("batter_runs", "count"))
@@ -343,7 +333,7 @@ def update_h2h(team_a, team_b, season_data):
 
     # Top wicket-taker: count bowler-credited wickets
     BOWLER_WKTS = {"caught", "bowled", "lbw", "caught and bowled", "stumped", "hit wicket"}
-    wkt_del  = h2h_legal[(h2h_legal["wicket"].astype(bool)) & (h2h_legal["wicket_kind"].isin(BOWLER_WKTS))]
+    wkt_del  = h2h_legal[h2h_legal["wicket"] & h2h_legal["wicket_kind"].isin(BOWLER_WKTS)]
     wkt_grp  = wkt_del.groupby("bowler").size().rename("wickets")
     top_wicket_name = top_wkt_count = top_wkt_econ = "—"
     if not wkt_grp.empty:
@@ -457,7 +447,7 @@ def update_wp_trajectory(match_id, team_a, team_b, season_data):
     mat_f = MAT[(MAT["season"] >= min_yr) & (MAT["season"] <= max_yr)].copy()
     del_f = DEL[
         (DEL["season"] >= min_yr) & (DEL["season"] <= max_yr) &
-        (~DEL["super_over"].astype(bool))
+        (~DEL["super_over"])
     ].copy()
 
     for col in ["team1", "team2", "winner", "toss_winner"]:

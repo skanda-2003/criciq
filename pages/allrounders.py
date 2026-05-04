@@ -151,7 +151,7 @@ def update_allrounders(season_data):
     # occasional bowlers like TM Head (10 balls) who inflate the allrounder count.
     del_window = DEL[
         (DEL["season"] >= min_yr) & (DEL["season"] <= max_yr) &
-        (~DEL["super_over"].astype(bool)) & (~DEL["is_wide"].astype(bool))
+        (~DEL["super_over"]) & (~DEL["is_wide"])
     ]
     bowl_qualified = set(
         del_window.groupby("bowler").size()
@@ -162,7 +162,7 @@ def update_allrounders(season_data):
     # Without this, pure bowlers with a batting z-score (even from minimal batting)
     # would appear - Bumrah, Chakravarthy, Markande etc. are not allrounders.
     bat_qualified = set(
-        del_window[~del_window["is_wide"].astype(bool)]
+        del_window[~del_window["is_wide"]]
         .groupby("batter").size()
         .loc[lambda s: s >= 50]
         .index
@@ -368,8 +368,8 @@ def update_allrounders(season_data):
     del_f = DEL[
         (DEL["season"] >= min_yr) &
         (DEL["season"] <= max_yr) &
-        (~DEL["super_over"].astype(bool)) &
-        (~DEL["is_wide"].astype(bool))
+        (~DEL["super_over"]) &
+        (~DEL["is_wide"])
     ]
     team_counts = (
         del_f[del_f["batter"].isin(allrounder_names)]
