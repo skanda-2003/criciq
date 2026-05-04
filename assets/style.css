@@ -550,3 +550,23 @@ a {
   background: #e5e5e5;
   border-radius: 2px;
 }
+
+/* ── What-if scenario cards (Simulator page) ─────────────────────── */
+
+/* Big probability number: IBM Plex Mono - it's the data point */
+.whatif-card__prob {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 28px;
+  font-weight: 600;
+  color: #111;
+  line-height: 1;
+  margin-top: 8px;
+  margin-bottom: 4px;
+}
+
+/* Delta line: IBM Plex Mono - it's a computed data value, color set inline */
+.whatif-card__delta {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 10px;
+  font-weight: 400;
+}

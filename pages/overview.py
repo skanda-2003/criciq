@@ -147,15 +147,40 @@ layout = html.Div([
         ),
     ], className="card-row"),
 
+    # Row 4 - top performers: run-scorers + wicket-takers for the selected season window
+    dbc.Row([
+        dbc.Col(
+            html.Div([
+                html.Span(id="overview-top-batters-label", className="chart-card__label"),
+                dcc.Graph(id="overview-top-batters-chart", config={"displayModeBar": False}, style={"height": "180px"}),
+            ], className="chart-card"),
+            width=6,
+        ),
+        dbc.Col(
+            html.Div([
+                html.Span(id="overview-top-bowlers-label", className="chart-card__label"),
+                dcc.Graph(id="overview-top-bowlers-chart", config={"displayModeBar": False}, style={"height": "180px"}),
+            ], className="chart-card"),
+            width=6,
+        ),
+    ], className="card-row"),
+
 ])
 
 
+_BOWLER_WICKET_KINDS = {"caught", "bowled", "lbw", "caught and bowled", "stumped", "hit wicket"}
+
+
 @callback(
-    Output("overview-title",       "children"),
-    Output("overview-metrics",     "children"),
-    Output("overview-phase-chart", "figure"),
-    Output("overview-death-chart", "figure"),
-    Output("overview-death-label", "children"),
+    Output("overview-title",            "children"),
+    Output("overview-metrics",          "children"),
+    Output("overview-phase-chart",      "figure"),
+    Output("overview-death-chart",      "figure"),
+    Output("overview-death-label",      "children"),
+    Output("overview-top-batters-chart", "figure"),
+    Output("overview-top-batters-label", "children"),
+    Output("overview-top-bowlers-chart", "figure"),
+    Output("overview-top-bowlers-label", "children"),
     Input("season-filter", "data"),
 )
 def update_overview(season_data):
@@ -270,11 +295,98 @@ def update_overview(season_data):
     fig_death.add_vline(x=league_sr, line_dash="dot", line_color="#ccc", line_width=1)
     fig_death.update_layout(**CHART_THEME)
     fig_death.update_layout(
-        yaxis={"autorange": "reversed", "tickfont": {"family": "Inter, system-ui, sans-serif", "size": 9}},
+        yaxis={
+            "autorange": "reversed",
+            # tickmode="array" + explicit tickvals forces Plotly to show every name,
+            # instead of auto-skipping labels when bars are close together.
+            "tickmode": "array",
+            "tickvals": specialists["display_name"].tolist(),
+            "ticktext": specialists["display_name"].tolist(),
+            "tickfont": {"family": "Inter, system-ui, sans-serif", "size": 9},
+        },
         margin={**CHART_THEME["margin"], "l": 130, "r": 90},
         xaxis={**CHART_THEME["xaxis"], "range": [0, 280]},
     )
 
     death_label = f"Death Specialists · SR in Overs 16-20 · Dashed = league avg {league_sr:.0f}"
 
-    return title, metrics, fig_phase, fig_death, death_label
+    # ── Top 5 run-scorers ─────────────────────────────────────────────
+    # Wides don't count as balls faced by the batter, so exclude them
+    # to avoid crediting extras as batter runs (they're already 0 in batter_runs, but be explicit).
+    top_scorers = (
+        del_f[~del_f["is_wide"].astype(bool)]
+        .groupby("batter")["batter_runs"]
+        .sum()
+        .reset_index(name="runs")
+        .sort_values("runs", ascending=False)
+        .head(5)
+    )
+    top_scorers["display_name"] = top_scorers["batter"].map(get_full_name)
+
+    fig_batters = go.Figure(go.Bar(
+        x=top_scorers["runs"],
+        y=top_scorers["display_name"],
+        orientation="h",
+        marker_color="#3b82f6",
+        marker_line_width=0,
+        width=0.5,
+        # text shows the raw run count outside the bar
+        text=top_scorers["runs"].astype(str),
+        textposition="outside",
+        textfont={"size": 9, "color": "#aaa", "family": "IBM Plex Mono, monospace"},
+        hovertemplate="<b>%{y}</b><br>%{x} runs<extra></extra>",
+    ))
+    fig_batters.update_layout(**CHART_THEME)
+    fig_batters.update_layout(
+        yaxis={
+            "autorange": "reversed",
+            "tickmode": "array",
+            "tickvals": top_scorers["display_name"].tolist(),
+            "ticktext": top_scorers["display_name"].tolist(),
+            "tickfont": {"family": "Inter, system-ui, sans-serif", "size": 9},
+        },
+        margin={**CHART_THEME["margin"], "l": 130, "r": 60, "t": 4, "b": 4},
+        xaxis={**CHART_THEME["xaxis"], "visible": False},
+    )
+    batters_label = f"Top 5 Run-Scorers · {min_yr}-{max_yr}"
+
+    # ── Top 5 wicket-takers ───────────────────────────────────────────
+    # Only count wickets where the bowler is credited: caught, bowled, lbw, etc.
+    # Run outs, retired hurt, and obstructing the field are NOT the bowler's wicket.
+    top_wickets = (
+        del_f[del_f["wicket_kind"].isin(_BOWLER_WICKET_KINDS)]
+        .groupby("bowler")
+        .size()
+        .reset_index(name="wickets")
+        .sort_values("wickets", ascending=False)
+        .head(5)
+    )
+    top_wickets["display_name"] = top_wickets["bowler"].map(get_full_name)
+
+    fig_bowlers = go.Figure(go.Bar(
+        x=top_wickets["wickets"],
+        y=top_wickets["display_name"],
+        orientation="h",
+        marker_color="#22c55e",
+        marker_line_width=0,
+        width=0.5,
+        text=top_wickets["wickets"].astype(str),
+        textposition="outside",
+        textfont={"size": 9, "color": "#aaa", "family": "IBM Plex Mono, monospace"},
+        hovertemplate="<b>%{y}</b><br>%{x} wickets<extra></extra>",
+    ))
+    fig_bowlers.update_layout(**CHART_THEME)
+    fig_bowlers.update_layout(
+        yaxis={
+            "autorange": "reversed",
+            "tickmode": "array",
+            "tickvals": top_wickets["display_name"].tolist(),
+            "ticktext": top_wickets["display_name"].tolist(),
+            "tickfont": {"family": "Inter, system-ui, sans-serif", "size": 9},
+        },
+        margin={**CHART_THEME["margin"], "l": 130, "r": 60, "t": 4, "b": 4},
+        xaxis={**CHART_THEME["xaxis"], "visible": False},
+    )
+    bowlers_label = f"Top 5 Wicket-Takers · {min_yr}-{max_yr}"
+
+    return title, metrics, fig_phase, fig_death, death_label, fig_batters, batters_label, fig_bowlers, bowlers_label
