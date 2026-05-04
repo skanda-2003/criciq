@@ -17,7 +17,6 @@ build/
 
 # Data (raw data files can be large)
 data/raw/
-data/processed/
 
 # Models
 models/*.pkl

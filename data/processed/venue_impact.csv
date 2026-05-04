@@ -1,0 +1,15 @@
+venue,balls,total_runs,boundaries_4,boundaries_6,dots,wickets,matches,runs_per_ball,run_rate,boundary_rate,dot_rate,wickets_per_ball,enough_data,p_value,cohens_d,significant
+"Maharaja Yadavindra Singh International Cricket Stadium, New Chandigarh",1188,2053,156,129,335,54,5,1.7281,10.369,23.99,28.2,0.0455,False,,,
+"Dr. Y.S. Rajasekhara Reddy ACA-VDCA Cricket Stadium, Visakhapatnam",917,1493,123,90,304,58,4,1.6281,9.769,23.23,33.15,0.0632,False,,,
+"Himachal Pradesh Cricket Association Stadium, Dharamsala",1247,2019,183,110,418,69,6,1.6191,9.715,23.5,33.52,0.0553,False,,,
+"Arun Jaitley Stadium, Delhi",6284,9918,904,507,1999,313,27,1.5783,9.47,22.45,31.81,0.0498,True,0.0001,0.055,True
+"M Chinnaswamy Stadium, Bengaluru",5505,8669,716,478,1754,297,24,1.5748,9.449,21.69,31.86,0.054,True,0.0003,0.052,True
+"Eden Gardens, Kolkata",5935,9328,850,490,2014,314,27,1.5717,9.43,22.58,33.93,0.0529,True,0.0003,0.051,True
+"Rajiv Gandhi International Stadium, Uppal, Hyderabad",5240,8135,739,391,1679,264,23,1.5525,9.315,21.56,32.04,0.0504,True,0.0082,0.038,True
+"Sawai Mansingh Stadium, Jaipur",4127,6354,569,296,1279,180,18,1.5396,9.238,20.96,30.99,0.0436,True,0.06,0.03,False
+"Narendra Modi Stadium, Ahmedabad",8332,12490,1029,617,2697,441,36,1.499,8.994,19.76,32.37,0.0529,True,0.5897,0.006,False
+"Barsapara Cricket Stadium, Guwahati",1733,2530,233,110,578,100,8,1.4599,8.759,19.79,33.35,0.0577,False,,,
+"Wankhede Stadium, Mumbai",12974,18872,1686,916,4594,659,56,1.4546,8.728,20.06,35.41,0.0508,True,0.0144,-0.024,True
+"Bharat Ratna Shri Atal Bihari Vajpayee Ekana Cricket Stadium, Lucknow",5950,8256,722,337,2056,317,26,1.3876,8.326,17.8,34.55,0.0533,True,0.0,-0.062,True
+"Maharaja Yadavindra Singh International Cricket Stadium, Mullanpur",2235,3089,261,136,783,144,10,1.3821,8.293,17.76,35.03,0.0644,True,0.0025,-0.062,True
+"MA Chidambaram Stadium, Chepauk, Chennai",8861,11824,1006,458,3099,482,38,1.3344,8.006,16.52,34.97,0.0544,True,0.0,-0.1,True
