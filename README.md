@@ -27,6 +27,16 @@ All pages respond to a season filter (default: 2021-26). This keeps the analysis
 
 ---
 
+## Screenshots
+
+**Overview - season trends, venue intelligence, phase breakdown**
+![Overview](screenshots/overview.png)
+
+**Player Deep-Dive - Virat Kohli vs Rohit Sharma comparison**
+![Virat vs Rohit](screenshots/virat_vs_rohit.png)
+
+---
+
 ## Key Findings
 
 These came out of the analysis and are surfaced in the dashboard - I wrote the hypotheses before running any numbers.
@@ -76,6 +86,36 @@ Composite metric: batting contribution vs phase average (50%), bowling economy v
 - **Visualization**: Plotly (all charts in the dashboard)
 - **Dashboard**: Dash with Dash Bootstrap Components for layout
 - **Notebooks**: Jupyter for EDA and analysis
+
+---
+
+## How I Built This
+
+A few decisions that shaped the project and that I think are worth explaining.
+
+**Pre-flattening all data into two canonical DataFrames**
+
+Cricsheet delivers data as nested JSON - one file per match, with deliveries nested inside innings inside each file. I parse all of it once upfront into `deliveries.csv` (one row per ball) and `matches.csv` (one row per match). Every notebook and every dashboard page reads from those two files. The alternative - re-parsing JSON on each query - would have made every analysis slower and harder to reproduce. Separating data engineering from analysis also means I could validate the parser once and trust it everywhere downstream.
+
+**Engineering `run_rate_pressure` as a feature**
+
+For the win probability model I could have just used current run rate and required run rate as separate features. Instead I engineered their ratio: `required_run_rate / current_run_rate`. The reasoning is that analysts don't think in raw rates independently - they think about whether the required rate is ahead or behind the scoring rate. A ratio captures that relationship directly. This feature ranked in the top 3 by importance in the Random Forest model, which validated the domain-motivated approach.
+
+**Retraining the win probability model at startup**
+
+The saved `.pkl` files became unusable after a scikit-learn version upgrade - the serialised model format changed between versions. Rather than pin the version or maintain two model files, `pages/simulator.py` retrains a fresh Logistic Regression at server startup using the processed data. It takes about 2 seconds and means the model is always trained on the exact sklearn version that's installed.
+
+**The 2021-2026 default window**
+
+T20 cricket in 2008-2015 was structurally different - lower average scores, different death-over tactics, no impact player rule, fewer overseas specialists. Using all-time data would produce leaderboards dominated by retired players from a different era of the game. The default filter to 2021-2026 keeps the analysis relevant to how IPL is actually played today. An all-time toggle is available for historical comparisons.
+
+**Death specialist classification by batting position**
+
+A naive death-overs leaderboard includes openers who simply survived to the death. A Virat Kohli facing 40 balls in overs 16-20 because he came in at the fall of the first wicket is not a death specialist - he is a top-order anchor playing out the innings. I filter death leaderboards to batsmen with average batting position > 5, which correctly surfaces genuine finishers like Rinku Singh and Tim David while excluding settled openers.
+
+**Data-driven player page sections**
+
+Rather than maintain a role classification table (batsman / bowler / allrounder), the player page decides what to render based on what the data shows. The batting section appears if the player has 50+ balls faced in any single phase. The bowling section appears if they have 50+ balls bowled total. This means the page is always accurate - it shows what a player actually contributed, not what their listed role says they should contribute.
 
 ---
 
