@@ -14,21 +14,21 @@ CHART_THEME = {
     "paper_bgcolor": "white",
     "plot_bgcolor":  "white",
     # Default font for all chart text — IBM Plex Mono because chart content is data
-    "font": {"family": _MONO, "size": 10, "color": "#aaa"},
+    "font": {"family": _MONO, "size": 11, "color": "#aaa"},
     "xaxis": {
         "showgrid":  False,
         "showline":  True,
         "linecolor": COLORS["border"],
         "linewidth": 1,
         "tickcolor": "#aaa",
-        "tickfont":  {"family": _MONO, "size": 9, "color": "#aaa"},
+        "tickfont":  {"family": _MONO, "size": 11, "color": "#aaa"},
         "title":     {"text": ""},
     },
     "yaxis": {
         "showgrid":  False,
         "showline":  False,
         "tickcolor": "#aaa",
-        "tickfont":  {"family": _MONO, "size": 9, "color": "#aaa"},
+        "tickfont":  {"family": _MONO, "size": 11, "color": "#aaa"},
         "title":     {"text": ""},
         "nticks":    4,
     },
@@ -40,7 +40,7 @@ CHART_THEME = {
     },
     "margin":     {"l": 0, "r": 0, "t": 8, "b": 24},
     # Legend labels describe chart series — Inter as UI chrome
-    "legend":     {"font": {"family": _SANS, "size": 10, "color": "#888"}, "bgcolor": "rgba(0,0,0,0)", "borderwidth": 0},
+    "legend":     {"font": {"family": _SANS, "size": 11, "color": "#888"}, "bgcolor": "rgba(0,0,0,0)", "borderwidth": 0},
     "showlegend": False,
 }
 

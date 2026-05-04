@@ -17,7 +17,7 @@ body {
   font-family: 'Inter', system-ui, sans-serif;
   background-color: #ffffff;
   color: #222;
-  font-size: 12px; /* bodyMD at -1px */
+  font-size: 13px;
   margin: 0;
 }
 
@@ -41,7 +41,7 @@ a {
 
 .section-label {
   font-family: 'Inter', system-ui, sans-serif;
-  font-size: 9px; /* labelXS at -1px */
+  font-size: 10px;
   font-weight: 500;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -106,7 +106,7 @@ a {
 /* Stat value: IBM Plex Mono - it's the actual data ("1,175", "2008–2026") */
 .ciq-navbar__stat-value {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
   color: #ffffff;
   line-height: 1.4;
@@ -164,7 +164,7 @@ a {
 /* Label: Inter - describes what the number means, UI chrome */
 .metric-card__label {
   font-family: 'Inter', system-ui, sans-serif;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 500;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -182,7 +182,7 @@ a {
 /* Value: IBM Plex Mono - this IS the data */
 .metric-card__value {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 22px;
+  font-size: 28px;
   font-weight: 600;
   color: #111;
   line-height: 1;
@@ -200,7 +200,7 @@ a {
 /* Secondary value: IBM Plex Mono - also data (e.g. " runs", "/7") */
 .metric-card__secondary {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 400;
   color: #aaa;
   margin-left: 2px;
@@ -233,7 +233,7 @@ a {
 /* Chart label: Inter - UI chrome describing the chart */
 .chart-card__label {
   font-family: 'Inter', system-ui, sans-serif;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 500;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -276,7 +276,7 @@ a {
 /* Title: Inter - result description ("MI won") */
 .feed-row__title {
   font-family: 'Inter', system-ui, sans-serif;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
   color: #111;
 }
@@ -288,7 +288,7 @@ a {
 /* Value: IBM Plex Mono - the actual result data ("24 runs", "5 wkts") */
 .feed-row__value {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: #111;
 }
