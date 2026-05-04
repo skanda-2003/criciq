@@ -9,7 +9,7 @@ from components.charts import CHART_THEME
 from data.loader import DEL
 from src.name_map import get_full_name
 
-dash.register_page(__name__, path="/bowler", name="Bowler Analytics", title="CricIQ - Bowler Analytics")
+dash.register_page(__name__, path="/bowlers", name="Bowler Analytics", title="CricIQ - Bowler Analytics")
 
 # Wicket kinds that are credited to the bowler (run outs, retired hurt, etc. are not)
 _BOWLER_WICKETS = {"caught", "bowled", "lbw", "caught and bowled", "stumped", "hit wicket"}

@@ -77,46 +77,14 @@ a {
   text-decoration: none;
 }
 
+/* Condensed dataset stats - inline after the brand, muted so it doesn't compete with links */
 .ciq-navbar__stats {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-}
-
-.ciq-navbar__stat-block {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 0 14px;
-}
-
-/* Stat label: Inter - it's a UI descriptor ("Matches", "Seasons") */
-.ciq-navbar__stat-label {
-  font-family: 'Inter', system-ui, sans-serif;
-  font-size: 9px;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #666;
-  line-height: 1.3;
-}
-
-/* Stat value: IBM Plex Mono - it's the actual data ("1,175", "2008–2026") */
-.ciq-navbar__stat-value {
   font-family: 'IBM Plex Mono', monospace;
-  font-size: 12px;
+  font-size: 9px;
   font-weight: 400;
-  color: #ffffff;
-  line-height: 1.4;
-}
-
-.ciq-navbar__divider {
-  font-family: 'Inter', system-ui, sans-serif;
-  color: #333;
-  font-size: 14px;
-  user-select: none;
+  color: #888;
+  margin-left: 16px;
+  white-space: nowrap;
 }
 
 .ciq-navbar__nav {

@@ -9,7 +9,7 @@ from components.charts import CHART_THEME, empty_figure
 from data.loader import DEL
 from src.name_map import get_full_name
 
-dash.register_page(__name__, path="/batting", name="Batting Analytics", title="CricIQ - Batting Analytics")
+dash.register_page(__name__, path="/batters", name="Batting Analytics", title="CricIQ - Batting Analytics")
 
 
 def _finding(dot_color, children):
