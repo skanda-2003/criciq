@@ -146,7 +146,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-The app starts on `http://localhost:8050`. The win probability model retrains at startup (~2 seconds) - this is intentional since the saved `.pkl` files have a scikit-learn version mismatch.
+The app starts on `http://localhost:8050`. On first run, the win probability model trains and saves to `models/wp_model.pkl` (~2 seconds). All subsequent starts load from that file instantly.
 
 To regenerate the processed CSVs from raw Cricsheet data:
 ```bash

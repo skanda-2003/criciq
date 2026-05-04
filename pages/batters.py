@@ -128,10 +128,10 @@ def update_batting(season_data):
     del_f = DEL[
         (DEL["season"] >= min_yr) &
         (DEL["season"] <= max_yr) &
-        (~DEL["super_over"].astype(bool))
+        (~DEL["super_over"])
     ]
     # Wides don't count as balls faced - exclude from all per-ball stats
-    legal = del_f[~del_f["is_wide"].astype(bool)]
+    legal = del_f[~del_f["is_wide"]]
 
     # ── Phase stats: one row per batter x phase ──────────────────────
     phase_stats = legal.groupby(["batter", "phase"]).agg(

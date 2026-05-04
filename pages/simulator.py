@@ -5,23 +5,13 @@ import plotly.graph_objects as go
 
 from components.charts import win_probability_gauge, CHART_THEME
 from src.wp_model import predict_prob, FEATURES
+from src.constants import TEAM_RENAME
 from data.loader import DEL
 
 dash.register_page(__name__, path="/simulator", name="Match Simulator", title="CricIQ - Simulator")
 
-# ── Team name normalisation ───────────────────────────────────────────
-# Several franchises have been renamed or have a spelling variant in Cricsheet.
-# Map every old name to the current canonical name so the dropdown has no duplicates
-# and the historical lookup works correctly regardless of which era a match is from.
-_TEAM_ALIASES = {
-    "Royal Challengers Bangalore": "Royal Challengers Bengaluru",
-    "Rising Pune Supergiant":      "Rising Pune Supergiants",
-    "Delhi Daredevils":            "Delhi Capitals",
-    "Kings XI Punjab":             "Punjab Kings",
-}
-
 def _norm_team(name: str) -> str:
-    return _TEAM_ALIASES.get(name, name)
+    return TEAM_RENAME.get(name, name)
 
 _TEAMS = sorted({_norm_team(t) for t in DEL["batting_team"].dropna().unique()})
 
@@ -36,7 +26,7 @@ _TEAMS = sorted({_norm_team(t) for t in DEL["batting_team"].dropna().unique()})
 _CHASE_STATES = (
     DEL[
         (DEL["innings"] == 2) &
-        (~DEL["super_over"].astype(bool)) &
+        (~DEL["super_over"]) &
         (DEL["target_runs"].notna()) &
         (DEL["ball_in_over"] == 1)
     ]

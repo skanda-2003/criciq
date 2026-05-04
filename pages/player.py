@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 from components.metric_card import metric_card
 from components.charts import CHART_THEME
 from src.name_map import get_full_name as _display_name
+from src.constants import BOWLER_WICKET_KINDS
 from data.loader import DEL
 
 dash.register_page(__name__, path="/player", name="Player Deep-Dive", title="CricIQ - Player")
@@ -37,15 +38,15 @@ def _compute_league_avgs(del_legal):
 
 
 _DEL_RECENT_LEGAL  = DEL[
-    (DEL["season"] >= 2021) & (~DEL["super_over"].astype(bool)) & (~DEL["is_wide"].astype(bool))
+    (DEL["season"] >= 2021) & (~DEL["super_over"]) & (~DEL["is_wide"])
 ]
 _DEL_ALLTIME_LEGAL = DEL[
-    (~DEL["super_over"].astype(bool)) & (~DEL["is_wide"].astype(bool))
+    (~DEL["super_over"]) & (~DEL["is_wide"])
 ]
 
 # Include wides for bowling economy (wide extras count against the bowler's economy)
-_DEL_RECENT_ALL  = DEL[(DEL["season"] >= 2021) & (~DEL["super_over"].astype(bool))]
-_DEL_ALLTIME_ALL = DEL[~DEL["super_over"].astype(bool)]
+_DEL_RECENT_ALL  = DEL[(DEL["season"] >= 2021) & (~DEL["super_over"])]
+_DEL_ALLTIME_ALL = DEL[~DEL["super_over"]]
 
 _LEAGUE_AVG_SR_RECENT  = _compute_league_avgs(_DEL_RECENT_LEGAL)
 _LEAGUE_AVG_SR_ALLTIME = _compute_league_avgs(_DEL_ALLTIME_LEGAL)
@@ -91,8 +92,8 @@ def _compute_overall_bat_avgs(del_legal, bat_players):
     if len(q) == 0:
         return {"sr": 0.0, "bpct": 0.0, "dpct": 0.0}
     balls       = len(q)
-    boundaries  = (q["is_boundary_4"].astype(bool) | q["is_boundary_6"].astype(bool)).sum()
-    dots        = q["is_dot"].astype(bool).sum()
+    boundaries  = (q["is_boundary_4"] | q["is_boundary_6"]).sum()
+    dots        = q["is_dot"].sum()
     return {
         "sr":   q["batter_runs"].sum() / balls * 100,
         "bpct": boundaries / balls * 100,
@@ -238,8 +239,8 @@ def update_player(player, season_data, matchup_metric, player_compare):
         (DEL["batter"]     == player) &
         (DEL["season"]     >= min_yr) &
         (DEL["season"]     <= max_yr) &
-        (~DEL["super_over"].astype(bool)) &
-        (~DEL["is_wide"]   .astype(bool))
+        (~DEL["super_over"]) &
+        (~DEL["is_wide"])
     ]
 
     # League averages for the selected window
@@ -252,9 +253,9 @@ def update_player(player, season_data, matchup_metric, player_compare):
     total_balls      = len(player_legal)
     total_runs       = int(player_legal["batter_runs"].sum())
     total_boundaries = int(
-        (player_legal["is_boundary_4"].astype(bool) | player_legal["is_boundary_6"].astype(bool)).sum()
+        (player_legal["is_boundary_4"] | player_legal["is_boundary_6"]).sum()
     )
-    total_dots = int(player_legal["is_dot"].astype(bool).sum())
+    total_dots = int(player_legal["is_dot"].sum())
 
     sr   = round(total_runs / total_balls * 100, 1) if total_balls > 0 else 0
     bpct = round(total_boundaries / total_balls * 100, 1) if total_balls > 0 else 0
@@ -284,36 +285,35 @@ def update_player(player, season_data, matchup_metric, player_compare):
             (DEL["batter"]     == player_compare) &
             (DEL["season"]     >= min_yr) &
             (DEL["season"]     <= max_yr) &
-            (~DEL["super_over"].astype(bool)) &
-            (~DEL["is_wide"]   .astype(bool))
+            (~DEL["super_over"]) &
+            (~DEL["is_wide"])
         ]
         c_balls = len(compare_legal)
         c_runs  = int(compare_legal["batter_runs"].sum())
         c_sr    = round(c_runs / c_balls * 100, 1) if c_balls > 0 else 0
         c_bpct  = round(
-            (compare_legal["is_boundary_4"].astype(bool) | compare_legal["is_boundary_6"].astype(bool)).sum()
+            (compare_legal["is_boundary_4"] | compare_legal["is_boundary_6"]).sum()
             / c_balls * 100, 1
         ) if c_balls > 0 else 0
-        c_dpct  = round(compare_legal["is_dot"].astype(bool).sum() / c_balls * 100, 1) if c_balls > 0 else 0
-        c_4s    = int(compare_legal["is_boundary_4"].astype(bool).sum())
-        c_6s    = int(compare_legal["is_boundary_6"].astype(bool).sum())
+        c_dpct  = round(compare_legal["is_dot"].sum() / c_balls * 100, 1) if c_balls > 0 else 0
+        c_4s    = int(compare_legal["is_boundary_4"].sum())
+        c_6s    = int(compare_legal["is_boundary_6"].sum())
         name_b  = f"{_display_name(player_compare)} ({role_b.title()})"
 
     # Bowling stats for comparison (computed when at least one player is a bowler/allrounder)
-    WKT_KINDS_BOWL = {"caught", "bowled", "lbw", "caught and bowled", "stumped", "hit wicket"}
     a_bowl = b_bowl = None
 
     def _bowl_cmp_stats(p):
         """Returns bowl comparison dict for player p in the selected window."""
         all_d  = DEL[(DEL["bowler"] == p) & (DEL["season"] >= min_yr) & (DEL["season"] <= max_yr) &
-                     (~DEL["super_over"].astype(bool))]
-        legal  = all_d[~all_d["is_wide"].astype(bool)]
+                     (~DEL["super_over"])]
+        legal  = all_d[~all_d["is_wide"]]
         balls  = len(legal)
         if balls < 10:
             return {"wickets": "—", "economy": "—", "dot_pct": "—", "balls": 0}
-        wkts   = int(legal[legal["wicket_kind"].isin(WKT_KINDS_BOWL)].shape[0])
+        wkts   = int(legal[legal["wicket_kind"].isin(BOWLER_WICKET_KINDS)].shape[0])
         econ   = round(all_d["total_runs"].sum() / (balls / 6), 2)
-        dot_pc = round(legal["is_dot"].astype(bool).sum() / balls * 100, 1)
+        dot_pc = round(legal["is_dot"].sum() / balls * 100, 1)
         return {"wickets": wkts, "economy": econ, "dot_pct": f"{dot_pc}%", "balls": balls}
 
     if player_compare:
@@ -339,8 +339,8 @@ def update_player(player, season_data, matchup_metric, player_compare):
             cmp_type = "mixed"
 
     # Precompute 4s and 6s for primary player (used in compare stats row)
-    total_4s = int(player_legal["is_boundary_4"].astype(bool).sum())
-    total_6s = int(player_legal["is_boundary_6"].astype(bool).sum())
+    total_4s = int(player_legal["is_boundary_4"].sum())
+    total_6s = int(player_legal["is_boundary_6"].sum())
 
     # ── Consistency score ─────────────────────────────────────────────
     # CV (coefficient of variation) = std / mean of match-level impact scores.
@@ -793,8 +793,16 @@ def update_player(player, season_data, matchup_metric, player_compare):
         ]
 
     # ── Season-by-season batting: runs + SR per season ────────────────
-    # For each season in the window, compute the player's runs, balls, SR
-    # alongside the league average SR for that season (all qualifiers with 50+ balls).
+    # Pre-compute league avg SR per season once for the whole window.
+    # Without this, the loop would re-filter all 279K rows on every iteration.
+    _window_legal     = DEL[(DEL["season"] >= min_yr) & (DEL["season"] <= max_yr) &
+                            (~DEL["super_over"]) & (~DEL["is_wide"])]
+    _batter_szn_balls = _window_legal.groupby(["batter", "season"]).size().reset_index(name="n")
+    _q_pairs          = _batter_szn_balls[_batter_szn_balls["n"] >= 50][["batter", "season"]]
+    _q_del            = _window_legal.merge(_q_pairs, on=["batter", "season"])
+    _szn_stats        = _q_del.groupby("season").agg(_r=("batter_runs", "sum"), _b=("batter_runs", "count"))
+    _league_sr_by_szn = (_szn_stats["_r"] / _szn_stats["_b"] * 100).to_dict()
+
     season_rows = []
     for szn in sorted(player_legal["season"].unique()):
         szn_del = player_legal[player_legal["season"] == szn]
@@ -803,19 +811,7 @@ def update_player(player, season_data, matchup_metric, player_compare):
             continue
         runs = int(szn_del["batter_runs"].sum())
         sr   = round(runs / balls * 100, 1)
-
-        # League avg SR for this season: all players with 50+ balls
-        league_szn = DEL[
-            (DEL["season"] == szn) & (~DEL["super_over"].astype(bool)) &
-            (~DEL["is_wide"].astype(bool))
-        ]
-        per_player = league_szn.groupby("batter").size()
-        qualified  = per_player[per_player >= 50].index
-        if len(qualified) > 0:
-            q      = league_szn[league_szn["batter"].isin(qualified)]
-            lg_sr  = q["batter_runs"].sum() / len(q) * 100
-        else:
-            lg_sr  = None
+        lg_sr = _league_sr_by_szn.get(szn)
         season_rows.append({"season": str(int(szn)), "runs": runs, "sr": sr, "league_sr": lg_sr})
 
     df_ssn = pd.DataFrame(season_rows)
@@ -839,10 +835,10 @@ def update_player(player, season_data, matchup_metric, player_compare):
                 rows.append({"season": str(int(szn)), "econ": round(szn_all["total_runs"].sum() / (b / 6), 2)})
             return pd.DataFrame(rows)
 
-        a_bowl_all   = DEL[(DEL["bowler"] == player)         & (DEL["season"] >= min_yr) & (DEL["season"] <= max_yr) & (~DEL["super_over"].astype(bool))]
-        b_bowl_all   = DEL[(DEL["bowler"] == player_compare) & (DEL["season"] >= min_yr) & (DEL["season"] <= max_yr) & (~DEL["super_over"].astype(bool))]
-        a_bowl_legal = a_bowl_all[~a_bowl_all["is_wide"].astype(bool)]
-        b_bowl_legal = b_bowl_all[~b_bowl_all["is_wide"].astype(bool)]
+        a_bowl_all   = DEL[(DEL["bowler"] == player)         & (DEL["season"] >= min_yr) & (DEL["season"] <= max_yr) & (~DEL["super_over"])]
+        b_bowl_all   = DEL[(DEL["bowler"] == player_compare) & (DEL["season"] >= min_yr) & (DEL["season"] <= max_yr) & (~DEL["super_over"])]
+        a_bowl_legal = a_bowl_all[~a_bowl_all["is_wide"]]
+        b_bowl_legal = b_bowl_all[~b_bowl_all["is_wide"]]
         df_a_econ    = _bowl_season_econ(a_bowl_legal, a_bowl_all)
         df_b_econ    = _bowl_season_econ(b_bowl_legal, b_bowl_all)
 
@@ -889,14 +885,8 @@ def update_player(player, season_data, matchup_metric, player_compare):
                     continue
                 runs = int(szn_del["batter_runs"].sum())
                 sr   = round(runs / b * 100, 1)
-                lg_sr = None
-                if include_lg_avg:
-                    lg_szn = DEL[(DEL["season"] == szn) & (~DEL["super_over"].astype(bool)) & (~DEL["is_wide"].astype(bool))]
-                    per_p  = lg_szn.groupby("batter").size()
-                    q      = per_p[per_p >= 50].index
-                    if len(q) > 0:
-                        qd    = lg_szn[lg_szn["batter"].isin(q)]
-                        lg_sr = qd["batter_runs"].sum() / len(qd) * 100
+                # Use the pre-computed dict from the outer scope (same season window)
+                lg_sr = _league_sr_by_szn.get(szn) if include_lg_avg else None
                 rows.append({"season": str(int(szn)), "runs": runs, "sr": sr, "league_sr": lg_sr})
             if not rows:
                 return None
@@ -1088,10 +1078,10 @@ def update_player(player, season_data, matchup_metric, player_compare):
         (DEL["bowler"]     == player) &
         (DEL["season"]     >= min_yr) &
         (DEL["season"]     <= max_yr) &
-        (~DEL["super_over"].astype(bool))
+        (~DEL["super_over"])
     ]
     # Legal balls only (wides excluded) for ball count and dot ball %
-    bowler_legal      = bowler_all[~bowler_all["is_wide"].astype(bool)]
+    bowler_legal      = bowler_all[~bowler_all["is_wide"]]
     total_balls_bowled = len(bowler_legal)
 
     if total_balls_bowled < 50:
@@ -1099,10 +1089,10 @@ def update_player(player, season_data, matchup_metric, player_compare):
     else:
         # Wicket types that count as the bowler's wicket in cricket
         BOWLER_WKT_KINDS = {"caught", "bowled", "lbw", "caught and bowled", "stumped", "hit wicket"}
-        wkt_balls     = bowler_legal[bowler_legal["wicket"].astype(bool)]
+        wkt_balls     = bowler_legal[bowler_legal["wicket"]]
         total_wickets = int(wkt_balls[wkt_balls["wicket_kind"].isin(BOWLER_WKT_KINDS)].shape[0])
 
-        bowl_dots    = int(bowler_legal["is_dot"].astype(bool).sum())
+        bowl_dots    = int(bowler_legal["is_dot"].sum())
         bowl_dot_pct = round(bowl_dots / total_balls_bowled * 100, 1)
 
         total_runs_conceded = int(bowler_all["total_runs"].sum())
@@ -1118,8 +1108,8 @@ def update_player(player, season_data, matchup_metric, player_compare):
         cb_all = cb_legal = None
         if cmp_bowl_active:
             cb_all   = DEL[(DEL["bowler"] == player_compare) & (DEL["season"] >= min_yr) &
-                           (DEL["season"] <= max_yr) & (~DEL["super_over"].astype(bool))]
-            cb_legal = cb_all[~cb_all["is_wide"].astype(bool)]
+                           (DEL["season"] <= max_yr) & (~DEL["super_over"])]
+            cb_legal = cb_all[~cb_all["is_wide"]]
 
         # ── Economy by phase ─────────────────────────────────────────
         league_avgs_bowl = _LEAGUE_AVG_ECON_RECENT if min_yr >= 2021 else _LEAGUE_AVG_ECON_ALLTIME
@@ -1245,7 +1235,7 @@ def update_player(player, season_data, matchup_metric, player_compare):
 
         fig_wkt = go.Figure()
         if cmp_bowl_active:
-            cb_wkt_b  = cb_legal[cb_legal["wicket"].astype(bool)]
+            cb_wkt_b  = cb_legal[cb_legal["wicket"]]
             buckets_b = _wkt_buckets(cb_wkt_b)
             y_labels  = [_display_name(player), _display_name(player_compare)]
             for bucket in ["caught", "bowled", "lbw", "stumped", "other"]:
@@ -1361,8 +1351,8 @@ def update_player(player, season_data, matchup_metric, player_compare):
                 econ = round(szn_a["total_runs"].sum() / (b / 6), 2)
                 lg_econ = None
                 if include_lg_avg:
-                    lg_szn_all   = DEL[(DEL["season"] == szn) & (~DEL["super_over"].astype(bool))]
-                    lg_szn_legal = lg_szn_all[~lg_szn_all["is_wide"].astype(bool)]
+                    lg_szn_all   = DEL[(DEL["season"] == szn) & (~DEL["super_over"])]
+                    lg_szn_legal = lg_szn_all[~lg_szn_all["is_wide"]]
                     per_b = lg_szn_legal.groupby("bowler").size()
                     q_b   = per_b[per_b >= 50].index
                     if len(q_b) > 0:

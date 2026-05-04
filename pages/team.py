@@ -8,15 +8,9 @@ from components.metric_card import metric_card
 from components.charts import CHART_THEME, empty_figure
 from data.loader import DEL, MAT
 from src.name_map import get_full_name
+from src.constants import TEAM_RENAME as _RENAME
 
 dash.register_page(__name__, path="/team", name="Team Strategy", title="CricIQ - Team Strategy")
-
-_RENAME = {
-    "Royal Challengers Bangalore": "Royal Challengers Bengaluru",
-    "Rising Pune Supergiant":      "Rising Pune Supergiants",
-    "Delhi Daredevils":            "Delhi Capitals",
-    "Kings XI Punjab":             "Punjab Kings",
-}
 
 # Team list built from all seasons so it doesn't shrink when season filter narrows
 _mat_all = MAT.copy()
@@ -135,12 +129,12 @@ def update_team(selected_team, season_data):
     del_f = DEL[
         (DEL["season"] >= min_yr) &
         (DEL["season"] <= max_yr) &
-        (~DEL["super_over"].astype(bool))
+        (~DEL["super_over"])
     ].copy()
     for col in ["batting_team", "bowling_team", "match_winner"]:
         del_f[col] = del_f[col].replace(_RENAME)
 
-    legal = del_f[~del_f["is_wide"].astype(bool)]
+    legal = del_f[~del_f["is_wide"]]
 
     # All matches the selected team played in
     team_matches = mat_f[

@@ -8,6 +8,7 @@ from components.metric_card import metric_card
 from components.charts import phase_stacked_bar, CHART_THEME
 from data.loader import DEL, MAT
 from src.name_map import get_full_name
+from src.constants import BOWLER_WICKET_KINDS
 
 dash.register_page(__name__, path="/", name="Overview", title="CricIQ - Overview")
 
@@ -173,9 +174,6 @@ layout = html.Div([
 ])
 
 
-_BOWLER_WICKET_KINDS = {"caught", "bowled", "lbw", "caught and bowled", "stumped", "hit wicket"}
-
-
 @callback(
     Output("overview-title",            "children"),
     Output("overview-metrics",          "children"),
@@ -196,7 +194,7 @@ def update_overview(season_data):
     del_f = DEL[
         (DEL["season"] >= min_yr) &
         (DEL["season"] <= max_yr) &
-        (~DEL["super_over"].astype(bool))
+        (~DEL["super_over"])
     ]
     mat_f = MAT[(MAT["season"] >= min_yr) & (MAT["season"] <= max_yr)]
 
@@ -255,7 +253,7 @@ def update_overview(season_data):
     # Computed from DEL directly so it responds to the season filter.
     # Wide deliveries are excluded: they don't count as balls faced by the batter.
     legal_death = del_f[
-        (del_f["phase"] == "death") & (~del_f["is_wide"].astype(bool))
+        (del_f["phase"] == "death") & (~del_f["is_wide"])
     ]
 
     death_stats = legal_death.groupby("batter").agg(
@@ -319,7 +317,7 @@ def update_overview(season_data):
     # Wides don't count as balls faced by the batter, so exclude them
     # to avoid crediting extras as batter runs (they're already 0 in batter_runs, but be explicit).
     top_scorers = (
-        del_f[~del_f["is_wide"].astype(bool)]
+        del_f[~del_f["is_wide"]]
         .groupby("batter")["batter_runs"]
         .sum()
         .reset_index(name="runs")
@@ -359,7 +357,7 @@ def update_overview(season_data):
     # Only count wickets where the bowler is credited: caught, bowled, lbw, etc.
     # Run outs, retired hurt, and obstructing the field are NOT the bowler's wicket.
     top_wickets = (
-        del_f[del_f["wicket_kind"].isin(_BOWLER_WICKET_KINDS)]
+        del_f[del_f["wicket_kind"].isin(BOWLER_WICKET_KINDS)]
         .groupby("bowler")
         .size()
         .reset_index(name="wickets")

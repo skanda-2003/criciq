@@ -8,11 +8,9 @@ from components.metric_card import metric_card
 from components.charts import CHART_THEME
 from data.loader import DEL
 from src.name_map import get_full_name
+from src.constants import BOWLER_WICKET_KINDS
 
 dash.register_page(__name__, path="/bowlers", name="Bowler Analytics", title="CricIQ - Bowler Analytics")
-
-# Wicket kinds that are credited to the bowler (run outs, retired hurt, etc. are not)
-_BOWLER_WICKETS = {"caught", "bowled", "lbw", "caught and bowled", "stumped", "hit wicket"}
 
 # Broad dismissal categories for the stacked bar
 def _categorize_wicket(kind):
@@ -153,17 +151,17 @@ def update_bowler(season_data):
     del_f = DEL[
         (DEL["season"] >= min_yr) &
         (DEL["season"] <= max_yr) &
-        (~DEL["super_over"].astype(bool))
+        (~DEL["super_over"])
     ]
     # legal excludes wides - used to count balls bowled and wickets
-    legal = del_f[~del_f["is_wide"].astype(bool)]
+    legal = del_f[~del_f["is_wide"]]
 
     # ── Bowling stats: one row per bowler x phase ────────────────────
     # Balls bowled from legal deliveries; runs from del_f (includes wide extras)
     bowl_balls = legal.groupby(["bowler", "phase"]).size().reset_index(name="balls_bowled")
     bowl_runs  = del_f.groupby(["bowler", "phase"])["total_runs"].sum().reset_index(name="runs_conceded")
     bowl_wkts  = (
-        legal[legal["wicket_kind"].isin(_BOWLER_WICKETS)]
+        legal[legal["wicket_kind"].isin(BOWLER_WICKET_KINDS)]
         .groupby(["bowler", "phase"])
         .size()
         .reset_index(name="wickets")
@@ -181,7 +179,7 @@ def update_bowler(season_data):
 
     # ── Overall wicket totals (all phases, for cards and chart C) ────
     total_wkts = (
-        legal[legal["wicket_kind"].isin(_BOWLER_WICKETS)]
+        legal[legal["wicket_kind"].isin(BOWLER_WICKET_KINDS)]
         .groupby("bowler")
         .size()
         .reset_index(name="wickets")
@@ -313,7 +311,7 @@ def update_bowler(season_data):
     top15_bowlers = total_wkts.head(15)["bowler"].tolist()
     wkt_del = legal[
         legal["bowler"].isin(top15_bowlers) &
-        legal["wicket_kind"].isin(_BOWLER_WICKETS)
+        legal["wicket_kind"].isin(BOWLER_WICKET_KINDS)
     ].copy()
     wkt_del["category"] = wkt_del["wicket_kind"].map(_categorize_wicket)
 
