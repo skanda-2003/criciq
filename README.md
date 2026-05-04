@@ -4,6 +4,8 @@ A full-stack cricket analytics project built on ball-by-ball IPL data. The goal 
 
 Built with Python, Pandas, Scikit-learn, and Plotly Dash. Analysis spans 1,175 IPL matches and 279,586 deliveries from 2008 to 2026.
 
+**Live demo**: [criciq-983h.onrender.com](https://criciq-983h.onrender.com)
+
 ---
 
 ## Dashboard
