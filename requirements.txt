@@ -1,22 +1,21 @@
 # Core data and ML stack
-pandas>=3.0.2
-numpy>=2.4.4
-scikit-learn>=1.8.0
-scipy>=1.17.1
+pandas==3.0.2
+numpy==2.4.4
+scikit-learn==1.8.0
+scipy==1.17.1
 
 # Visualization
-plotly>=6.6.0
-matplotlib>=3.10.8
-seaborn>=0.13.2
+plotly==6.6.0
+matplotlib==3.10.8
+seaborn==0.13.2
 
 # Dashboard
-dash>=4.1.0
-dash-bootstrap-components>=2.0.4
+dash==4.1.0
+dash-bootstrap-components==2.0.4
 
-# Notebooks
-jupyter>=1.1.1
-ipykernel>=7.2.0
+# Production server
+gunicorn==25.3.0
 
 # Utilities
-requests>=2.33.1
-tqdm>=4.67.3
+requests==2.33.1
+tqdm==4.67.3
