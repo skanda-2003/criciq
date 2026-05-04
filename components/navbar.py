@@ -45,6 +45,7 @@ def create_navbar():
             dbc.NavLink("Batting",      href="/batting",      active="exact", className="ciq-navbar__nav-link"),
             dbc.NavLink("Player",       href="/player",       active="exact", className="ciq-navbar__nav-link"),
             dbc.NavLink("Bowlers",      href="/bowler",       active="exact", className="ciq-navbar__nav-link"),
+            dbc.NavLink("Allrounders",  href="/allrounders",  active="exact", className="ciq-navbar__nav-link"),
             dbc.NavLink("Simulator",    href="/simulator",    active="exact", className="ciq-navbar__nav-link"),
             dbc.NavLink("Head-to-Head", href="/head-to-head", active="exact", className="ciq-navbar__nav-link"),
         ], className="ciq-navbar__nav"),
