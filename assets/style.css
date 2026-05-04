@@ -188,6 +188,15 @@ a {
   line-height: 1;
 }
 
+/* Dual value: IBM Plex Mono - smaller variant for cards showing two stacked values */
+.metric-card__dual-value {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 15px;
+  font-weight: 600;
+  color: #111;
+  line-height: 1.6;
+}
+
 /* Secondary value: IBM Plex Mono - also data (e.g. " runs", "/7") */
 .metric-card__secondary {
   font-family: 'IBM Plex Mono', monospace;

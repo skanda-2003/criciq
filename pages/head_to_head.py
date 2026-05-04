@@ -12,7 +12,15 @@ from data.loader import DEL, MAT
 dash.register_page(__name__, path="/head-to-head", name="Head-to-Head", title="CricIQ - Head to Head")
 
 # ── Static reference data ────────────────────────────────────────────
-_RENAME = {"Royal Challengers Bangalore": "Royal Challengers Bengaluru"}
+# All four franchises that were renamed - maps old Cricsheet name to current.
+# Applying this ensures historical matches from old-name eras show up correctly
+# when a user selects the current name from the dropdown.
+_RENAME = {
+    "Royal Challengers Bangalore": "Royal Challengers Bengaluru",
+    "Rising Pune Supergiant":      "Rising Pune Supergiants",
+    "Delhi Daredevils":            "Delhi Capitals",
+    "Kings XI Punjab":             "Punjab Kings",
+}
 
 # Build team list from the full MAT (all seasons) so the dropdown works for
 # both 2021-26 and all-time mode without missing historical franchises
@@ -121,18 +129,35 @@ def update_h2h(team_a, team_b, season_data):
     a_wins = len(h2h[h2h["winner"] == team_a])
     b_wins = len(h2h[h2h["winner"] == team_b])
 
-    run_margins = h2h["result_margin_runs"].dropna()
-    avg_margin  = int(run_margins.mean()) if not run_margins.empty else 0
+    # Compute run-win and wicket-win margins separately.
+    # Each column is NaN for the other type of result, so dropna gives the correct subset.
+    run_margin_vals = h2h["result_margin_runs"].dropna()
+    wkt_margin_vals = h2h["result_margin_wickets"].dropna()
+    avg_run = f"{int(run_margin_vals.mean())} runs" if len(run_margin_vals) else "—"
+    avg_wkt = f"{int(wkt_margin_vals.mean())} wkts" if len(wkt_margin_vals) else "—"
+
+    # 4th card: custom two-line layout - one row per margin type.
+    # Can't use metric_card() here because it only supports one primary value.
+    margin_card = html.Div([
+        html.Span("Avg Win Margin", className="metric-card__label"),
+        html.Div([
+            html.Span(avg_run, className="metric-card__dual-value"),
+            html.Span(" by runs", className="metric-card__secondary"),
+        ], className="metric-card__value-row"),
+        html.Div([
+            html.Span(avg_wkt, className="metric-card__dual-value"),
+            html.Span(" by wickets", className="metric-card__secondary"),
+        ], className="metric-card__value-row"),
+    ], className="metric-card")
 
     metrics = [
-        dbc.Col(metric_card("H2H Matches",             str(total),
-                            progress=100,                                          color="blue"),   width=3),
         dbc.Col(metric_card(f"{team_a.split()[-1]} Wins", str(a_wins),
                             progress=int(a_wins / total * 100) if total else 0,   color="green"),  width=3),
         dbc.Col(metric_card(f"{team_b.split()[-1]} Wins", str(b_wins),
                             progress=int(b_wins / total * 100) if total else 0,   color="orange"), width=3),
-        dbc.Col(metric_card("Avg Win Margin",          f"{avg_margin}",
-                            color="blue"),                                                          width=3),
+        dbc.Col(metric_card("H2H Matches",             str(total),
+                            progress=100,                                          color="blue"),   width=3),
+        dbc.Col(margin_card,                                                                        width=3),
     ]
 
     # ── Phase run totals chart ────────────────────────────────────────
