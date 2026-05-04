@@ -564,3 +564,44 @@ a {
   font-size: 10px;
   font-weight: 400;
 }
+
+/* ── Matchup metric toggle (Player page) ─────────────────────────── */
+
+/* Container: flex row aligned to the right of the chart card label */
+.matchup-toggle {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+/* Each radio option label: small pill button */
+.matchup-toggle label {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border: 1px solid #e5e5e5;
+  border-radius: 3px;
+  color: #aaa;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+  margin: 0;
+}
+
+.matchup-toggle label:hover {
+  color: #555;
+  border-color: #bbb;
+}
+
+/* Hide the actual radio circle - the label acts as the button */
+.matchup-toggle input[type="radio"] {
+  display: none;
+}
+
+/* Active state: style the label that follows a checked radio */
+.matchup-toggle input[type="radio"]:checked + label {
+  color: #3b82f6;
+  border-color: #3b82f6;
+}

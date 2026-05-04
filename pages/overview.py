@@ -122,6 +122,11 @@ layout = html.Div([
         dbc.Col(
             html.Div([
                 html.Span("Key Research Findings · 2021-26", className="chart-card__label"),
+                html.P(
+                    "Fixed to 2021-26 analysis - does not change with the season toggle.",
+                    style={"fontSize": "10px", "color": "#bbb", "marginBottom": "8px",
+                           "fontFamily": "Inter, system-ui, sans-serif"},
+                ),
                 _finding("#f97316", [
                     html.Strong("Wankhede is not a batting paradise."),
                     " In 2021-26 it is statistically below average (p = 0.014, d = -0.02). "

@@ -89,8 +89,8 @@ layout = html.Div([
             ]),
 
             html.P(id="sim-overs-label",   className="section-label", style={"marginBottom": "4px", "marginTop": "14px"}),
-            dcc.Slider(id="sim-overs",   min=1, max=19, step=1, value=10,
-                       marks={i: str(i) for i in range(1, 20, 2)},
+            dcc.Slider(id="sim-overs",   min=1, max=20, step=1, value=10,
+                       marks={i: str(i) for i in range(1, 21, 2)},
                        tooltip={"placement": "bottom", "always_visible": False}),
 
             html.P(id="sim-wickets-label", className="section-label", style={"marginBottom": "4px", "marginTop": "12px"}),
@@ -186,6 +186,24 @@ def update_simulator(target, score, overs_done, wickets_fallen, team):
         overs_remaining = 20 - overs_done
         runs_needed     = max(target - score, 0)
         wickets_in_hand = 10 - wickets_fallen
+
+        # Guard: if the batting team has already reached/exceeded the target, the
+        # chase is over. Showing a gauge here is meaningless - show a clear message instead.
+        if score >= target:
+            from components.charts import empty_figure
+            won_fig = empty_figure("")
+            won_msg = html.Div(
+                "Target already reached - this team has won.",
+                style={"fontSize": "12px", "color": "#22c55e", "textAlign": "center",
+                       "fontFamily": "Inter, system-ui, sans-serif", "padding": "20px 0"},
+            )
+            no_text  = html.Span("")
+            return (
+                won_fig, won_fig,
+                f"Overs Completed · {overs_done}",
+                f"Wickets Fallen · {wickets_fallen}",
+                won_msg, no_text, no_text, no_text, no_text,
+            )
 
         current_rr  = score / overs_done if overs_done > 0 else 0.0
         required_rr = runs_needed / overs_remaining if overs_remaining > 0 else 36.0

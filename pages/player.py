@@ -12,9 +12,10 @@ from data.loader import DEL
 dash.register_page(__name__, path="/player", name="Player Deep-Dive", title="CricIQ - Player")
 
 # ── Per-player pre-computed data (matchups + cluster stay 2021-26) ───
-_matchups = pd.read_csv("data/processed/bowler_matchups.csv")
-_profiles = pd.read_csv("data/processed/batsman_profiles.csv")
-_impact   = pd.read_csv("data/processed/player_impact_season.csv")
+_matchups     = pd.read_csv("data/processed/bowler_matchups.csv")
+_profiles     = pd.read_csv("data/processed/batsman_profiles.csv")
+_impact       = pd.read_csv("data/processed/player_impact_season.csv")
+_impact_match = pd.read_csv("data/processed/player_impact_match.csv")
 
 PHASE_ORDER  = ["powerplay", "middle", "death"]
 PHASE_COLORS = {"powerplay": "#3b82f6", "middle": "#22c55e", "death": "#f97316"}
@@ -80,6 +81,28 @@ _bowl_counts       = _DEL_RECENT_LEGAL.groupby("bowler").size()
 _bowl_players      = set(_bowl_counts[_bowl_counts >= 50].index)
 _players           = sorted(_bat_players | _bowl_players)
 
+
+def _compute_overall_bat_avgs(del_legal, bat_players):
+    """
+    League-wide overall SR, boundary%, and dot% for batting-qualified players.
+    Used to compute the +/- vs avg delta shown in the player page metric cards.
+    """
+    q = del_legal[del_legal["batter"].isin(bat_players)]
+    if len(q) == 0:
+        return {"sr": 0.0, "bpct": 0.0, "dpct": 0.0}
+    balls       = len(q)
+    boundaries  = (q["is_boundary_4"].astype(bool) | q["is_boundary_6"].astype(bool)).sum()
+    dots        = q["is_dot"].astype(bool).sum()
+    return {
+        "sr":   q["batter_runs"].sum() / balls * 100,
+        "bpct": boundaries / balls * 100,
+        "dpct": dots / balls * 100,
+    }
+
+
+_LEAGUE_OVERALL_RECENT  = _compute_overall_bat_avgs(_DEL_RECENT_LEGAL,  _bat_players)
+_LEAGUE_OVERALL_ALLTIME = _compute_overall_bat_avgs(_DEL_ALLTIME_LEGAL, _bat_players)
+
 # Cluster archetype labels from k-means output in notebook 03
 _CLUSTER_LABELS = {
     0: ("Consistent Striker", "#22c55e"),
@@ -93,7 +116,7 @@ layout = html.Div([
 
     html.Span(id="player-title", className="section-label"),
 
-    # Row 1: player dropdown + cluster badge
+    # Row 1: primary player dropdown + compare dropdown + cluster badge
     dbc.Row([
         dbc.Col(
             dcc.Dropdown(
@@ -106,6 +129,16 @@ layout = html.Div([
             width=4,
         ),
         dbc.Col(
+            dcc.Dropdown(
+                id="player-compare",
+                options=[{"label": _display_name(p), "value": p} for p in _players],
+                placeholder="Compare with...",
+                clearable=True,
+                searchable=True,
+            ),
+            width=4,
+        ),
+        dbc.Col(
             html.Div(id="player-cluster-badge"),
             width="auto",
             className="d-flex align-items-center",
@@ -113,21 +146,38 @@ layout = html.Div([
     ], className="card-row"),
 
     # Row 2: summary metric cards
-    dbc.Row(id="player-metrics", className="card-row"),
+    dcc.Loading(type="circle", color="#3b82f6",
+                children=dbc.Row(id="player-metrics", className="card-row")),
 
-    # Row 3: phase SR chart + matchup chart
+    # Row 3: phase SR chart + matchup chart (with metric toggle above the chart)
     dbc.Row([
-        dbc.Col(html.Div(id="player-phase-chart",   className="chart-card"), width=6),
-        dbc.Col(html.Div(id="player-matchup-chart", className="chart-card"), width=6),
+        dbc.Col(dcc.Loading(type="circle", color="#3b82f6",
+                            children=html.Div(id="player-phase-chart", className="chart-card")), width=6),
+        dbc.Col(html.Div([
+            dcc.RadioItems(
+                id="matchup-metric",
+                options=[
+                    {"label": "Dismissal %", "value": "dismissal_prob"},
+                    {"label": "Strike Rate",  "value": "strike_rate"},
+                    {"label": "Boundary %",   "value": "boundary_rate"},
+                ],
+                value="dismissal_prob",
+                className="matchup-toggle",
+            ),
+            dcc.Loading(type="circle", color="#3b82f6",
+                        children=html.Div(id="player-matchup-chart", className="chart-card")),
+        ]), width=6),
     ], className="card-row"),
 
     # Row 4: impact score trend
     dbc.Row([
-        dbc.Col(html.Div(id="player-impact-chart", className="chart-card"), width=6),
+        dbc.Col(dcc.Loading(type="circle", color="#3b82f6",
+                            children=html.Div(id="player-impact-chart", className="chart-card")), width=6),
     ], className="card-row"),
 
     # Bowling section - only rendered when the player has bowled 50+ legal balls
-    html.Div(id="player-bowl-section"),
+    dcc.Loading(type="circle", color="#3b82f6",
+                children=html.Div(id="player-bowl-section")),
 
 ])
 
@@ -140,10 +190,12 @@ layout = html.Div([
     Output("player-cluster-badge", "children"),
     Output("player-impact-chart",  "children"),
     Output("player-bowl-section",  "children"),
-    Input("player-select",  "value"),
-    Input("season-filter",  "data"),
+    Input("player-select",   "value"),
+    Input("season-filter",   "data"),
+    Input("matchup-metric",  "value"),
+    Input("player-compare",  "value"),
 )
-def update_player(player, season_data):
+def update_player(player, season_data, matchup_metric, player_compare):
     min_yr = season_data["min"]
     max_yr = season_data["max"]
 
@@ -157,7 +209,8 @@ def update_player(player, season_data):
     ]
 
     # League averages for the selected window
-    league_avgs = _LEAGUE_AVG_SR_RECENT if min_yr >= 2021 else _LEAGUE_AVG_SR_ALLTIME
+    league_avgs    = _LEAGUE_AVG_SR_RECENT if min_yr >= 2021 else _LEAGUE_AVG_SR_ALLTIME
+    overall_avgs   = _LEAGUE_OVERALL_RECENT if min_yr >= 2021 else _LEAGUE_OVERALL_ALLTIME
 
     title = "Player Deep-Dive · All Time (2008-2026)" if min_yr <= 2008 else f"Player Deep-Dive · {min_yr}-{max_yr}"
 
@@ -173,83 +226,187 @@ def update_player(player, season_data):
     bpct = round(total_boundaries / total_balls * 100, 1) if total_balls > 0 else 0
     dpct = round(total_dots       / total_balls * 100, 1) if total_balls > 0 else 0
 
+    # Compute deltas vs league average for the SR, boundary%, and dot% cards.
+    # Format as "+14 vs avg" or "-3 vs avg" so the card is self-interpreting.
+    def _delta_str(player_val, avg_val):
+        d = player_val - avg_val
+        return f"{d:+.0f} vs avg"
+
+    sr_delta   = _delta_str(sr,   overall_avgs["sr"])   if total_balls > 0 else None
+    bpct_delta = _delta_str(bpct, overall_avgs["bpct"]) if total_balls > 0 else None
+    dpct_delta = _delta_str(dpct, overall_avgs["dpct"]) if total_balls > 0 else None
+
+    # ── Consistency score (impact CV) ────────────────────────────────────
+    # CV = std / mean. A low CV means the player performs consistently;
+    # a high CV means big swings between matches (feast-or-famine).
+    match_imp = _impact_match[
+        (_impact_match["player"] == player) &
+        (_impact_match["season"] >= min_yr) &
+        (_impact_match["season"] <= max_yr)
+    ]
+    if len(match_imp) >= 3 and match_imp["impact_score"].mean() != 0:
+        cv = match_imp["impact_score"].std() / abs(match_imp["impact_score"].mean())
+        cv_value = f"{cv:.2f}"
+        if cv < 0.5:
+            cv_tag = "reliable"
+        elif cv < 1.0:
+            cv_tag = "variable"
+        else:
+            cv_tag = "feast-or-famine"
+    else:
+        cv_value = "—"
+        cv_tag   = f"{len(match_imp)} matches"
+
     metrics = [
-        dbc.Col(metric_card("Strike Rate", str(sr),          progress=int(min(sr / 200 * 100, 100)),          color="blue"),   width=3),
-        dbc.Col(metric_card("Balls Faced", str(total_balls), progress=int(min(total_balls / 500 * 100, 100)), color="green"),  width=3),
-        dbc.Col(metric_card("Boundary %",  f"{bpct}%",       progress=int(min(bpct / 40 * 100, 100)),          color="orange"), width=3),
-        dbc.Col(metric_card("Dot Ball %",  f"{dpct}%",       progress=int(dpct),                               color="red"),    width=3),
+        dbc.Col(metric_card("Strike Rate", str(sr),          secondary=sr_delta,   progress=int(min(sr / 200 * 100, 100)),          color="blue"),   width=2),
+        dbc.Col(metric_card("Balls Faced", str(total_balls),                        progress=int(min(total_balls / 500 * 100, 100)), color="green"),  width=2),
+        dbc.Col(metric_card("Boundary %",  f"{bpct}%",       secondary=bpct_delta, progress=int(min(bpct / 40 * 100, 100)),          color="orange"), width=2),
+        dbc.Col(metric_card("Dot Ball %",  f"{dpct}%",       secondary=dpct_delta, progress=int(dpct),                               color="red"),    width=2),
+        dbc.Col(metric_card("Impact CV",   cv_value,          secondary=cv_tag,
+                            progress=int(min(cv / 2 * 100, 100)) if cv_value != "—" else 0,
+                            color="blue"),                                                                                       width=4),
     ]
 
     # ── Phase SR chart ────────────────────────────────────────────────
     # Computed from DEL directly so this responds to the season filter.
-    phase_rows = []
-    for ph in PHASE_ORDER:
-        ph_del = player_legal[player_legal["phase"] == ph]
-        balls  = len(ph_del)
-        if balls > 0:
-            phase_rows.append({
-                "phase":       ph,
-                "strike_rate": ph_del["batter_runs"].sum() / balls * 100,
-                "balls_faced": balls,
-            })
+    # In comparison mode (player_compare is set), switches to a grouped bar
+    # showing player A (blue) vs player B (orange) side by side per phase.
 
-    df_ph = (
-        pd.DataFrame(phase_rows).set_index("phase").reindex(PHASE_ORDER).dropna()
-        if phase_rows else pd.DataFrame()
-    )
+    def _phase_sr(legal_df):
+        """Return a dict mapping phase -> strike_rate for one player's legal balls."""
+        rows = {}
+        for ph in PHASE_ORDER:
+            ph_del = legal_df[legal_df["phase"] == ph]
+            balls  = len(ph_del)
+            if balls > 0:
+                rows[ph] = ph_del["batter_runs"].sum() / balls * 100
+        return rows
+
+    sr_a = _phase_sr(player_legal)
 
     fig_phase = go.Figure()
 
-    if not df_ph.empty:
+    if player_compare:
+        # Comparison mode: grouped horizontal bars, player A = blue, player B = orange
+        compare_legal = DEL[
+            (DEL["batter"]     == player_compare) &
+            (DEL["season"]     >= min_yr) &
+            (DEL["season"]     <= max_yr) &
+            (~DEL["super_over"].astype(bool)) &
+            (~DEL["is_wide"]   .astype(bool))
+        ]
+        sr_b = _phase_sr(compare_legal)
+
+        # Only show phases where at least one player has data
+        phases_to_show = [ph for ph in PHASE_ORDER if ph in sr_a or ph in sr_b]
+
+        a_vals = [sr_a.get(ph, 0) for ph in phases_to_show]
+        b_vals = [sr_b.get(ph, 0) for ph in phases_to_show]
+
+        name_a = _display_name(player)
+        name_b = _display_name(player_compare)
+
         fig_phase.add_trace(go.Bar(
-            x=df_ph["strike_rate"],
-            y=df_ph.index,
+            name=name_a,
+            x=a_vals, y=phases_to_show,
             orientation="h",
-            marker_color=[PHASE_COLORS[p] for p in df_ph.index],
+            marker_color="#3b82f6",
             marker_line_width=0,
-            width=0.5,
-            text=[f"{v:.0f}" for v in df_ph["strike_rate"]],
+            width=0.35,
+            text=[f"{v:.0f}" for v in a_vals],
             textposition="outside",
-            textfont={"size": 10, "color": "#888"},
-            showlegend=False,
+            textfont={"size": 9, "color": "#888"},
+        ))
+        fig_phase.add_trace(go.Bar(
+            name=name_b,
+            x=b_vals, y=phases_to_show,
+            orientation="h",
+            marker_color="#f97316",
+            marker_line_width=0,
+            width=0.35,
+            text=[f"{v:.0f}" for v in b_vals],
+            textposition="outside",
+            textfont={"size": 9, "color": "#888"},
         ))
 
-        for phase in df_ph.index:
-            if phase in league_avgs:
-                fig_phase.add_trace(go.Scatter(
-                    x=[league_avgs[phase]],
-                    y=[phase],
-                    mode="markers+text",
-                    marker=dict(symbol="line-ns-open", size=22, color="#ccc",
-                                line=dict(width=2, color="#ccc")),
-                    text=[f"avg {league_avgs[phase]:.0f}"],
-                    textposition="bottom center",
-                    textfont=dict(size=9, color="#aaa", family="IBM Plex Mono"),
-                    showlegend=False,
-                    hovertemplate=f"League avg ({phase}): {league_avgs[phase]:.0f}<extra></extra>",
-                ))
+        x_max = max(max(a_vals, default=0), max(b_vals, default=0)) * 1.4
 
-    x_max = max(
-        df_ph["strike_rate"].max() if not df_ph.empty else 200,
-        max(league_avgs.values(), default=0),
-    ) * 1.35
+        fig_phase.update_layout(**CHART_THEME)
+        fig_phase.update_layout(
+            barmode="group",
+            showlegend=True,
+            legend={"font": {"size": 9, "color": "#888", "family": "Inter, system-ui, sans-serif"},
+                    "orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
+            yaxis={"categoryorder": "array", "categoryarray": PHASE_ORDER[::-1]},
+            margin={**CHART_THEME["margin"], "l": 80, "r": 40},
+            xaxis={**CHART_THEME["xaxis"], "range": [0, x_max]},
+        )
+        phase_label = f"Strike Rate by Phase · {name_a} vs {name_b}"
 
-    fig_phase.update_layout(**CHART_THEME)
-    fig_phase.update_layout(
-        yaxis={"categoryorder": "array", "categoryarray": PHASE_ORDER[::-1]},
-        margin={**CHART_THEME["margin"], "l": 80, "r": 40},
-        xaxis={**CHART_THEME["xaxis"], "range": [0, x_max]},
-    )
+    else:
+        # Single-player mode: colored horizontal bars + league avg tick marks
+        phases_with_data = [ph for ph in PHASE_ORDER if ph in sr_a]
+
+        if phases_with_data:
+            fig_phase.add_trace(go.Bar(
+                x=[sr_a[ph] for ph in phases_with_data],
+                y=phases_with_data,
+                orientation="h",
+                marker_color=[PHASE_COLORS[p] for p in phases_with_data],
+                marker_line_width=0,
+                width=0.5,
+                text=[f"{sr_a[ph]:.0f}" for ph in phases_with_data],
+                textposition="outside",
+                textfont={"size": 10, "color": "#888"},
+                showlegend=False,
+            ))
+
+            for phase in phases_with_data:
+                if phase in league_avgs:
+                    fig_phase.add_trace(go.Scatter(
+                        x=[league_avgs[phase]],
+                        y=[phase],
+                        mode="markers+text",
+                        marker=dict(symbol="line-ns-open", size=22, color="#ccc",
+                                    line=dict(width=2, color="#ccc")),
+                        text=[f"avg {league_avgs[phase]:.0f}"],
+                        textposition="bottom center",
+                        textfont=dict(size=9, color="#aaa", family="IBM Plex Mono"),
+                        showlegend=False,
+                        hovertemplate=f"League avg ({phase}): {league_avgs[phase]:.0f}<extra></extra>",
+                    ))
+
+        x_max = max(
+            max(sr_a.values(), default=0),
+            max(league_avgs.values(), default=0),
+        ) * 1.35
+
+        fig_phase.update_layout(**CHART_THEME)
+        fig_phase.update_layout(
+            yaxis={"categoryorder": "array", "categoryarray": PHASE_ORDER[::-1]},
+            margin={**CHART_THEME["margin"], "l": 80, "r": 40},
+            xaxis={**CHART_THEME["xaxis"], "range": [0, x_max]},
+        )
+        phase_label = "Strike Rate by Phase  ·  tick = league avg"
 
     phase_chart = [
-        html.Span("Strike Rate by Phase  ·  tick = league avg", className="chart-card__label"),
+        html.Span(phase_label, className="chart-card__label"),
         dcc.Graph(figure=fig_phase, config={"displayModeBar": False}, style={"height": "180px"}),
     ]
 
     # ── Matchup chart - pre-computed 2021-26, does not change with filter ──
+    # matchup_metric controls which column to plot (dismissal_prob / strike_rate / boundary_rate)
+    _METRIC_META = {
+        "dismissal_prob": {"label": "Dismissal Probability by Bowler · 2021-26", "suffix": "%",  "fmt": ".1f%"},
+        "strike_rate":    {"label": "Strike Rate by Bowler · 2021-26",            "suffix": "",   "fmt": ".0f"},
+        "boundary_rate":  {"label": "Boundary Rate by Bowler · 2021-26",          "suffix": "%",  "fmt": ".1f%"},
+    }
+    metric_col  = matchup_metric or "dismissal_prob"
+    metric_info = _METRIC_META[metric_col]
+
     bm = (
         _matchups[_matchups["batter"] == player]
-        .sort_values("dismissal_prob", ascending=False)
+        .sort_values(metric_col, ascending=False)
         .head(8)
     )
 
@@ -260,25 +417,30 @@ def update_player(player, season_data):
                    style={"fontSize": "11px", "color": "#888", "marginTop": "12px"}),
         ]
     else:
+        fmt = metric_info["fmt"]
+        bar_text = [f"{v:{fmt}}" if "%" not in fmt else f"{v:.1f}%" for v in bm[metric_col]]
         fig_match = go.Figure(go.Bar(
-            x=bm["dismissal_prob"],
+            x=bm[metric_col],
             y=bm["bowler"],
             orientation="h",
             marker_color="#3b82f6",
             marker_line_width=0,
             width=0.5,
-            text=[f"{v:.1f}%" for v in bm["dismissal_prob"]],
+            text=bar_text,
             textposition="outside",
             textfont={"size": 10, "color": "#888"},
         ))
         fig_match.update_layout(**CHART_THEME)
+        x_cfg = {**CHART_THEME["xaxis"]}
+        if metric_info["suffix"]:
+            x_cfg["ticksuffix"] = metric_info["suffix"]
         fig_match.update_layout(
             yaxis={"autorange": "reversed"},
             margin={**CHART_THEME["margin"], "l": 120, "r": 50},
-            xaxis={**CHART_THEME["xaxis"], "ticksuffix": "%"},
+            xaxis=x_cfg,
         )
         matchup_chart = [
-            html.Span("Dismissal Probability by Bowler · 2021-26", className="chart-card__label"),
+            html.Span(metric_info["label"], className="chart-card__label"),
             dcc.Graph(figure=fig_match, config={"displayModeBar": False}, style={"height": "180px"}),
         ]
 
@@ -293,11 +455,7 @@ def update_player(player, season_data):
             style={"backgroundColor": color + "22", "color": color, "borderColor": color + "55"},
         )
     else:
-        cluster_badge = html.Span(
-            "No cluster data",
-            className="cluster-badge",
-            style={"backgroundColor": "#f5f5f5", "color": "#bbb", "borderColor": "#e5e5e5"},
-        )
+        cluster_badge = None  # hide the badge row entirely when the player has no cluster data
 
     # ── Impact score trend ────────────────────────────────────────────
     imp = _impact[
