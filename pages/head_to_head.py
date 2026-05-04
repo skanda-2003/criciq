@@ -41,7 +41,7 @@ layout = html.Div([
             width=4,
         ),
         dbc.Col(
-            html.P("vs", style={"textAlign": "center", "color": "#aaa",
+            html.P("vs", style={"textAlign": "center", "color": "#777",
                                 "fontSize": "11px", "marginTop": "7px"}),
             width=1,
         ),
@@ -410,8 +410,15 @@ def update_h2h(team_a, team_b, season_data):
     fig_dom.update_layout(
         barmode="stack",
         showlegend=True,
-        margin={**CHART_THEME["margin"], "l": 40},
-        xaxis={**CHART_THEME["xaxis"], "title": {"text": "Wins", "font": {"size": 9, "color": "#aaa"}}},
+        margin={**CHART_THEME["margin"], "l": 55},
+        xaxis={**CHART_THEME["xaxis"], "title": {"text": "Wins", "font": {"size": 9, "color": "#777"}}},
+        yaxis={
+            **CHART_THEME["yaxis"],
+            "tickmode": "array",
+            "tickvals": season_labels,
+            "ticktext": season_labels,
+            "tickfont": {"family": "Inter, system-ui, sans-serif", "size": 9, "color": "#777"},
+        },
         legend={"font": {"size": 9, "color": "#888", "family": "Inter, system-ui, sans-serif"},
                 "orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
     )
@@ -526,7 +533,7 @@ def update_wp_trajectory(match_id, team_a, team_b, season_data):
 
     fig_wp.update_layout(**CHART_THEME)
     fig_wp.update_layout(
-        xaxis={**CHART_THEME["xaxis"], "title": {"text": "Ball", "font": {"size": 9, "color": "#aaa"}}},
+        xaxis={**CHART_THEME["xaxis"], "title": {"text": "Ball", "font": {"size": 9, "color": "#777"}}},
         yaxis={**CHART_THEME["yaxis"], "tickformat": ".0%", "range": [0, 1], "nticks": 5},
         margin={**CHART_THEME["margin"], "l": 40},
     )

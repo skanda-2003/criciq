@@ -294,7 +294,7 @@ def update_overview(season_data):
         text=[f"{v:.0f}  ({b} balls)" for v, b in
               zip(specialists["strike_rate"], specialists["balls_faced"])],
         textposition="outside",
-        textfont={"size": 9, "color": "#aaa", "family": "IBM Plex Mono, monospace"},
+        textfont={"size": 9, "color": "#777", "family": "IBM Plex Mono, monospace"},
         hovertemplate="<b>%{y}</b><br>Death SR: %{x:.0f}<extra></extra>",
     ))
     fig_death.add_vline(x=league_sr, line_dash="dot", line_color="#ccc", line_width=1)
@@ -338,7 +338,7 @@ def update_overview(season_data):
         # text shows the raw run count outside the bar
         text=top_scorers["runs"].astype(str),
         textposition="outside",
-        textfont={"size": 9, "color": "#aaa", "family": "IBM Plex Mono, monospace"},
+        textfont={"size": 9, "color": "#777", "family": "IBM Plex Mono, monospace"},
         hovertemplate="<b>%{y}</b><br>%{x} runs<extra></extra>",
     ))
     fig_batters.update_layout(**CHART_THEME)
@@ -351,7 +351,7 @@ def update_overview(season_data):
             "tickfont": {"family": "Inter, system-ui, sans-serif", "size": 9},
         },
         margin={**CHART_THEME["margin"], "l": 130, "r": 60, "t": 4, "b": 4},
-        xaxis={**CHART_THEME["xaxis"], "visible": False},
+        xaxis={**CHART_THEME["xaxis"], "visible": False, "range": [2000, int(top_scorers["runs"].max() * 1.08)]},
     )
     batters_label = f"Top 5 Run-Scorers · {min_yr}-{max_yr}"
 
@@ -377,7 +377,7 @@ def update_overview(season_data):
         width=0.5,
         text=top_wickets["wickets"].astype(str),
         textposition="outside",
-        textfont={"size": 9, "color": "#aaa", "family": "IBM Plex Mono, monospace"},
+        textfont={"size": 9, "color": "#777", "family": "IBM Plex Mono, monospace"},
         hovertemplate="<b>%{y}</b><br>%{x} wickets<extra></extra>",
     ))
     fig_bowlers.update_layout(**CHART_THEME)
@@ -390,7 +390,7 @@ def update_overview(season_data):
             "tickfont": {"family": "Inter, system-ui, sans-serif", "size": 9},
         },
         margin={**CHART_THEME["margin"], "l": 130, "r": 60, "t": 4, "b": 4},
-        xaxis={**CHART_THEME["xaxis"], "visible": False},
+        xaxis={**CHART_THEME["xaxis"], "visible": False, "range": [50, int(top_wickets["wickets"].max() * 1.15)]},
     )
     bowlers_label = f"Top 5 Wicket-Takers · {min_yr}-{max_yr}"
 

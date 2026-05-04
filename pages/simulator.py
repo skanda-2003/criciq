@@ -316,7 +316,7 @@ def update_simulator(target, score, overs_done, wickets_fallen, team):
         fig_traj.add_hline(
             y=0.5, line_dash="dash", line_color="#d0d0d0", line_width=1,
             annotation_text="50/50",
-            annotation_font={"size": 8, "color": "#aaa"},
+            annotation_font={"size": 8, "color": "#777"},
             annotation_position="right",
         )
 
@@ -379,7 +379,7 @@ def update_simulator(target, score, overs_done, wickets_fallen, team):
             xaxis={
                 **CHART_THEME["xaxis"],
                 "range": [0.5, 20.5],
-                "title": {"text": "Over", "font": {"size": 9, "color": "#aaa"}},
+                "title": {"text": "Over", "font": {"size": 9, "color": "#777"}},
             },
             yaxis={**CHART_THEME["yaxis"], "tickformat": ".0%", "range": [0, 1], "nticks": 5},
             margin={**CHART_THEME["margin"], "l": 40},

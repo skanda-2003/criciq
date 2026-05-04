@@ -215,7 +215,7 @@ def update_batting(season_data):
         width=0.5,
         text=[f"{sr:.0f}  ({b}b)" for sr, b in zip(pp_top["strike_rate"], pp_top["balls_faced"])],
         textposition="outside",
-        textfont={"size": 9, "color": "#aaa", "family": "IBM Plex Mono, monospace"},
+        textfont={"size": 9, "color": "#777", "family": "IBM Plex Mono, monospace"},
         hovertemplate="<b>%{y}</b><br>PP SR: %{x:.0f}<extra></extra>",
     ))
     fig_pp.add_vline(x=pp_league_sr, line_dash="dot", line_color="#ccc", line_width=1)
@@ -229,7 +229,7 @@ def update_batting(season_data):
             "tickfont": {"family": "Inter, system-ui, sans-serif", "size": 9},
         },
         margin={**CHART_THEME["margin"], "l": 130, "r": 90},
-        xaxis={**CHART_THEME["xaxis"], "range": [0, 230]},
+        xaxis={**CHART_THEME["xaxis"], "range": [100, 260]},
     )
     pp_label = f"Powerplay Specialists · SR in Overs 1-6 · Dashed = league avg {pp_league_sr:.0f}"
 
@@ -250,7 +250,7 @@ def update_batting(season_data):
         width=0.5,
         text=[f"{sr:.0f}  ({b}b)" for sr, b in zip(mid_top["strike_rate"], mid_top["balls_faced"])],
         textposition="outside",
-        textfont={"size": 9, "color": "#aaa", "family": "IBM Plex Mono, monospace"},
+        textfont={"size": 9, "color": "#777", "family": "IBM Plex Mono, monospace"},
         hovertemplate="<b>%{y}</b><br>Middle SR: %{x:.0f}<extra></extra>",
     ))
     fig_mid.add_vline(x=mid_league_sr, line_dash="dot", line_color="#ccc", line_width=1)
@@ -264,7 +264,7 @@ def update_batting(season_data):
             "tickfont": {"family": "Inter, system-ui, sans-serif", "size": 9},
         },
         margin={**CHART_THEME["margin"], "l": 130, "r": 90},
-        xaxis={**CHART_THEME["xaxis"], "range": [0, 230]},
+        xaxis={**CHART_THEME["xaxis"], "range": [100, 260]},
     )
     mid_label = f"Middle Overs Anchors · SR in Overs 7-15 · Dashed = league avg {mid_league_sr:.0f}"
 
@@ -305,7 +305,7 @@ def update_batting(season_data):
         width=0.5,
         text=[f"{sr:.0f}  ({b}b)" for sr, b in zip(specialists["strike_rate"], specialists["balls_faced"])],
         textposition="outside",
-        textfont={"size": 9, "color": "#aaa", "family": "IBM Plex Mono, monospace"},
+        textfont={"size": 9, "color": "#777", "family": "IBM Plex Mono, monospace"},
         hovertemplate="<b>%{y}</b><br>Death SR: %{x:.0f}<extra></extra>",
     ))
     fig_death.add_vline(x=death_league_sr, line_dash="dot", line_color="#ccc", line_width=1)
@@ -319,7 +319,7 @@ def update_batting(season_data):
             "tickfont": {"family": "Inter, system-ui, sans-serif", "size": 9},
         },
         margin={**CHART_THEME["margin"], "l": 130, "r": 90},
-        xaxis={**CHART_THEME["xaxis"], "range": [0, 310]},
+        xaxis={**CHART_THEME["xaxis"], "range": [100, 340]},
     )
     death_label = (
         f"Death Specialists · SR in Overs 16-20 · Avg batting position > 5 "
@@ -391,13 +391,15 @@ def update_batting(season_data):
     fig_scatter.add_vline(x=pp_avg,    line_dash="dot", line_color="#ddd", line_width=1)
     fig_scatter.add_hline(y=death_avg, line_dash="dot", line_color="#ddd", line_width=1)
 
+    pp_max    = int(scatter["pp_sr"].max()    * 1.08)
+    death_max = int(scatter["death_sr"].max() * 1.08)
     fig_scatter.update_layout(**CHART_THEME)
     fig_scatter.update_layout(
-        xaxis={"title": {
+        xaxis={**CHART_THEME["xaxis"], "range": [120, pp_max], "title": {
             "text": "Powerplay SR (Overs 1-6)",
             "font": {"family": "Inter, system-ui, sans-serif", "size": 9, "color": "#888"},
         }},
-        yaxis={"title": {
+        yaxis={**CHART_THEME["yaxis"], "range": [140, death_max], "title": {
             "text": "Death SR (Overs 16-20)",
             "font": {"family": "Inter, system-ui, sans-serif", "size": 9, "color": "#888"},
         }},
@@ -426,6 +428,7 @@ def update_batting(season_data):
     scatter_label = (
         f"Complete Batsmen · PP SR vs Death SR · 50+ balls in each phase "
         f"· {n_complete} players above avg in both · {min_yr}-{max_yr}"
+        f" · PP SR<120 or Death SR<140 not shown"
     )
 
     return (
