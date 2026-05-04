@@ -12,7 +12,15 @@ from data.loader import DEL, MAT
 dash.register_page(__name__, path="/head-to-head", name="Head-to-Head", title="CricIQ - Head to Head")
 
 # ── Static reference data ────────────────────────────────────────────
-_RENAME = {"Royal Challengers Bangalore": "Royal Challengers Bengaluru"}
+# All four franchises that were renamed - maps old Cricsheet name to current.
+# Applying this ensures historical matches from old-name eras show up correctly
+# when a user selects the current name from the dropdown.
+_RENAME = {
+    "Royal Challengers Bangalore": "Royal Challengers Bengaluru",
+    "Rising Pune Supergiant":      "Rising Pune Supergiants",
+    "Delhi Daredevils":            "Delhi Capitals",
+    "Kings XI Punjab":             "Punjab Kings",
+}
 
 # Build team list from the full MAT (all seasons) so the dropdown works for
 # both 2021-26 and all-time mode without missing historical franchises
@@ -55,20 +63,30 @@ layout = html.Div([
 
     # Row 3: toss analysis + win probability trajectory
     dbc.Row([
-        dbc.Col(html.Div(id="h2h-toss",    className="chart-card"), width=5),
-        dbc.Col(html.Div(id="h2h-wp-traj", className="chart-card"), width=7),
+        dbc.Col(html.Div(id="h2h-toss", className="chart-card"), width=5),
+        dbc.Col(html.Div([
+            # Match picker sits above the chart - selecting a match re-renders the WP line
+            dcc.Dropdown(
+                id="h2h-match-picker",
+                placeholder="Select a match...",
+                clearable=False,
+                style={"marginBottom": "10px"},
+            ),
+            html.Div(id="h2h-wp-traj", className="chart-card"),
+        ]), width=7),
     ], className="card-row"),
 
 ])
 
 
 @callback(
-    Output("h2h-title",     "children"),
-    Output("h2h-metrics",    "children"),
-    Output("h2h-phase-chart","children"),
-    Output("h2h-feed",       "children"),
-    Output("h2h-toss",       "children"),
-    Output("h2h-wp-traj",    "children"),
+    Output("h2h-title",        "children"),
+    Output("h2h-metrics",      "children"),
+    Output("h2h-phase-chart",  "children"),
+    Output("h2h-feed",         "children"),
+    Output("h2h-toss",         "children"),
+    Output("h2h-match-picker", "options"),
+    Output("h2h-match-picker", "value"),
     Input("h2h-team-a",    "value"),
     Input("h2h-team-b",    "value"),
     Input("season-filter", "data"),
@@ -95,7 +113,7 @@ def update_h2h(team_a, team_b, season_data):
 
     if not team_a or not team_b or team_a == team_b:
         empty = html.P("Select two different teams.", style={"fontSize": "11px", "color": "#888"})
-        return title, [], [], empty, empty, empty
+        return title, [], [], empty, empty, [], None
 
     h2h = mat_f[
         (mat_f["team1"].isin([team_a, team_b])) &
@@ -104,25 +122,42 @@ def update_h2h(team_a, team_b, season_data):
 
     if h2h.empty:
         empty = html.P("No head-to-head matches found.", style={"fontSize": "11px", "color": "#888"})
-        return title, [], [], empty, empty, empty
+        return title, [], [], empty, empty, [], None
 
     # ── Summary record cards ─────────────────────────────────────────
     total  = len(h2h)
     a_wins = len(h2h[h2h["winner"] == team_a])
     b_wins = len(h2h[h2h["winner"] == team_b])
 
-    run_margins = h2h["result_margin_runs"].dropna()
-    avg_margin  = int(run_margins.mean()) if not run_margins.empty else 0
+    # Compute run-win and wicket-win margins separately.
+    # Each column is NaN for the other type of result, so dropna gives the correct subset.
+    run_margin_vals = h2h["result_margin_runs"].dropna()
+    wkt_margin_vals = h2h["result_margin_wickets"].dropna()
+    avg_run = f"{int(run_margin_vals.mean())} runs" if len(run_margin_vals) else "—"
+    avg_wkt = f"{int(wkt_margin_vals.mean())} wkts" if len(wkt_margin_vals) else "—"
+
+    # 4th card: custom two-line layout - one row per margin type.
+    # Can't use metric_card() here because it only supports one primary value.
+    margin_card = html.Div([
+        html.Span("Avg Win Margin", className="metric-card__label"),
+        html.Div([
+            html.Span(avg_run, className="metric-card__dual-value"),
+            html.Span(" by runs", className="metric-card__secondary"),
+        ], className="metric-card__value-row"),
+        html.Div([
+            html.Span(avg_wkt, className="metric-card__dual-value"),
+            html.Span(" by wickets", className="metric-card__secondary"),
+        ], className="metric-card__value-row"),
+    ], className="metric-card")
 
     metrics = [
-        dbc.Col(metric_card("H2H Matches",             str(total),
-                            progress=100,                                          color="blue"),   width=3),
         dbc.Col(metric_card(f"{team_a.split()[-1]} Wins", str(a_wins),
                             progress=int(a_wins / total * 100) if total else 0,   color="green"),  width=3),
         dbc.Col(metric_card(f"{team_b.split()[-1]} Wins", str(b_wins),
                             progress=int(b_wins / total * 100) if total else 0,   color="orange"), width=3),
-        dbc.Col(metric_card("Avg Win Margin",          f"{avg_margin}",
-                            color="blue"),                                                          width=3),
+        dbc.Col(metric_card("H2H Matches",             str(total),
+                            progress=100,                                          color="blue"),   width=3),
+        dbc.Col(margin_card,                                                                        width=3),
     ]
 
     # ── Phase run totals chart ────────────────────────────────────────
@@ -196,130 +231,198 @@ def update_h2h(team_a, team_b, season_data):
     ]
 
     # ── Toss impact ──────────────────────────────────────────────────
-    def _toss_row(team, h2h_df):
+    def _toss_block(label, wins, total, color):
+        # One mini stat block: label, "X wins from Y matches", progress bar, win%.
+        # Returns "No data" block if total is 0 to avoid division errors.
+        if total == 0:
+            return html.Div([
+                html.Div(label, className="toss-block__label"),
+                html.Div("No data", className="toss-block__no-data"),
+            ], className="toss-block")
+
+        pct = int(wins / total * 100)
+        return html.Div([
+            html.Div(label, className="toss-block__label"),
+            html.Div([
+                html.Span(str(wins), className="toss-block__wins"),
+                html.Span(f" wins / {total}", className="toss-block__denom"),
+            ]),
+            html.Div(
+                html.Div(style={"width": f"{pct}%", "height": "100%",
+                                "backgroundColor": color, "borderRadius": "2px"}),
+                className="toss-block__bar-track",
+            ),
+            html.Div(f"{pct}% win rate", className="toss-block__pct"),
+        ], className="toss-block")
+
+    def _toss_section(team, h2h_df):
         toss_matches   = h2h_df[h2h_df["toss_winner"] == team]
         notoss_matches = h2h_df[h2h_df["toss_winner"] != team]
 
         n_toss   = len(toss_matches)
         n_notoss = len(notoss_matches)
-
         w_toss   = len(toss_matches[toss_matches["winner"] == team])
         w_notoss = len(notoss_matches[notoss_matches["winner"] == team])
 
-        pct_toss   = int(w_toss   / n_toss   * 100) if n_toss   > 0 else None
-        pct_notoss = int(w_notoss / n_notoss * 100) if n_notoss > 0 else None
-
-        toss_str   = f"{pct_toss}%  ({w_toss}/{n_toss})"      if pct_toss   is not None else "No data"
-        notoss_str = f"{pct_notoss}%  ({w_notoss}/{n_notoss})" if pct_notoss is not None else "No data"
-
-        delta = (pct_toss or 0) - (pct_notoss or 0)
-        arrow = "+" if delta > 5 else ("-" if delta < -5 else "~")
+        # Split toss wins by what the team chose to do
+        toss_bat   = toss_matches[toss_matches["toss_decision"] == "bat"]
+        toss_field = toss_matches[toss_matches["toss_decision"] == "field"]
+        w_bat      = len(toss_bat[toss_bat["winner"] == team])
+        w_field    = len(toss_field[toss_field["winner"] == team])
 
         return html.Div([
             html.Div(team.split()[-1], className="toss-team-name"),
+            # Top row: did winning/losing the toss affect match outcome?
             html.Div([
-                html.Div([
-                    html.Span("Won toss",  className="toss-label"),
-                    html.Span(toss_str,    className="toss-value"),
-                ], className="toss-stat"),
-                html.Div([
-                    html.Span("Lost toss", className="toss-label"),
-                    html.Span(notoss_str,  className="toss-value"),
-                ], className="toss-stat"),
-                html.Div(
-                    f"Toss advantage: {arrow}{abs(delta)}pp" if pct_toss is not None else "",
-                    className="toss-delta",
-                    style={"color": "#22c55e" if delta > 5 else ("#ef4444" if delta < -5 else "#aaa")},
-                ),
-            ]),
+                _toss_block("WON TOSS",  w_toss,   n_toss,         "#3b82f6"),
+                _toss_block("LOST TOSS", w_notoss, n_notoss,        "#888"),
+            ], className="toss-grid"),
+            # Sub-header explains the bottom row is a breakdown of toss wins only
+            html.Div("When they won the toss, they chose to...", className="toss-decision-header"),
+            # Bottom row: of the toss wins, how did each decision play out?
+            html.Div([
+                _toss_block("BAT FIRST",   w_bat,   len(toss_bat),   "#22c55e"),
+                _toss_block("FIELD FIRST", w_field, len(toss_field),  "#f97316"),
+            ], className="toss-grid"),
         ], className="toss-team-block")
 
     toss_section = [
         html.Span("Toss Impact", className="chart-card__label"),
-        _toss_row(team_a, h2h),
+        _toss_section(team_a, h2h),
         html.Hr(style={"border": "none", "borderTop": "1px solid #f0f0f0", "margin": "10px 0"}),
-        _toss_row(team_b, h2h),
+        _toss_section(team_b, h2h),
     ]
 
-    # ── Win probability trajectory - most recent H2H match ───────────
-    recent_match = h2h.sort_values("date", ascending=False).iloc[0]
-    mid          = recent_match["match_id"]
+    # ── Match picker options ─────────────────────────────────────────
+    # Build one dropdown entry per H2H match, sorted newest first.
+    # The value stored is match_id (an integer) - the WP callback uses it to look up deliveries.
+    sorted_for_picker = h2h.sort_values("date", ascending=False)
+    match_options = []
+    for _, row in sorted_for_picker.iterrows():
+        t1    = row["team1"].split()[-1]
+        t2    = row["team2"].split()[-1]
+        date  = str(row.get("date",  ""))[:10]
+        venue = str(row.get("venue", ""))[:28]
+        label = f"{t1} vs {t2} · {date} · {venue}"
+        match_options.append({"label": label, "value": row["match_id"]})
 
+    # Default to the most recent match so the chart is never blank on load
+    default_match = match_options[0]["value"] if match_options else None
+
+    return title, metrics, phase_chart, feed, toss_section, match_options, default_match
+
+
+@callback(
+    Output("h2h-wp-traj", "children"),
+    Input("h2h-match-picker", "value"),
+    Input("h2h-team-a",       "value"),
+    Input("h2h-team-b",       "value"),
+    Input("season-filter",    "data"),
+)
+def update_wp_trajectory(match_id, team_a, team_b, season_data):
+    # This callback owns the WP chart. It fires whenever the match picker changes,
+    # which happens either from a user selection or when update_h2h sets a new default.
+    if not match_id:
+        return [html.P("Select a match above to see its win probability trajectory.",
+                       style={"fontSize": "11px", "color": "#888", "marginTop": "12px"})]
+
+    min_yr = season_data["min"]
+    max_yr = season_data["max"]
+
+    # Re-filter from global DataFrames - same pattern as every other callback
+    mat_f = MAT[(MAT["season"] >= min_yr) & (MAT["season"] <= max_yr)].copy()
+    del_f = DEL[
+        (DEL["season"] >= min_yr) & (DEL["season"] <= max_yr) &
+        (~DEL["super_over"].astype(bool))
+    ].copy()
+
+    for col in ["team1", "team2", "winner", "toss_winner"]:
+        if col in mat_f.columns:
+            mat_f[col] = mat_f[col].replace(_RENAME)
+    for col in ["batting_team", "bowling_team", "match_winner"]:
+        if col in del_f.columns:
+            del_f[col] = del_f[col].replace(_RENAME)
+
+    # Grab the match row so we have venue + date for the chart title
+    match_rows = mat_f[mat_f["match_id"] == match_id]
+    if match_rows.empty:
+        return [html.P("Match data not found.", style={"fontSize": "11px", "color": "#888"})]
+    match_row = match_rows.iloc[0]
+
+    # 2nd innings only - WP model is chase-only (1st innings has no required_run_rate)
     inn2 = del_f[
-        (del_f["match_id"] == mid) &
+        (del_f["match_id"] == match_id) &
         (del_f["innings"] == 2) &
         (del_f["required_run_rate"].notna()) &
         (del_f["run_rate_pressure"].notna())
     ].copy()
 
     if inn2.empty:
-        wp_traj = [
+        return [
             html.Span("Win Probability Trajectory", className="chart-card__label"),
             html.P("No 2nd innings data for this match.",
                    style={"fontSize": "11px", "color": "#888", "marginTop": "12px"}),
         ]
-    else:
-        inn2["wickets_in_hand"] = 10 - inn2["cumulative_wickets"]
-        inn2["overs_remaining"] = 20 - inn2["over"]
 
-        from src.wp_model import model as _wpm, scaler as _wps
-        import numpy as np
+    inn2["wickets_in_hand"] = 10 - inn2["cumulative_wickets"]
+    inn2["overs_remaining"] = 20 - inn2["over"]
 
-        feat_df = inn2[["current_run_rate", "required_run_rate", "run_rate_pressure",
-                         "wickets_in_hand", "overs_remaining"]].copy()
-        feat_df = feat_df.replace([np.inf, -np.inf], np.nan).dropna()
+    from src.wp_model import model as _wpm, scaler as _wps
+    import numpy as np
 
-        probs = _wpm.predict_proba(_wps.transform(feat_df))[:, 1]
+    feat_df = inn2[["current_run_rate", "required_run_rate", "run_rate_pressure",
+                     "wickets_in_hand", "overs_remaining"]].copy()
+    feat_df = feat_df.replace([np.inf, -np.inf], np.nan).dropna()
 
-        inn2_clean   = inn2.loc[feat_df.index].reset_index(drop=True)
-        seq          = list(range(1, len(probs) + 1))
-        batting_team = inn2_clean["batting_team"].iloc[0]
-        match_winner = (inn2_clean["match_winner"].iloc[0]
-                        if inn2_clean["match_winner"].notna().any() else "Unknown")
+    probs = _wpm.predict_proba(_wps.transform(feat_df))[:, 1]
 
-        hover_labels = [
-            f"Over {int(r['over'])}, Ball {int(r['ball_in_over'])}"
-            for _, r in inn2_clean.iterrows()
-        ]
+    inn2_clean   = inn2.loc[feat_df.index].reset_index(drop=True)
+    seq          = list(range(1, len(probs) + 1))
+    batting_team = inn2_clean["batting_team"].iloc[0]
+    match_winner = (inn2_clean["match_winner"].iloc[0]
+                    if inn2_clean["match_winner"].notna().any() else "Unknown")
 
-        won        = batting_team == match_winner
-        line_color = "#3b82f6" if won else "#f97316"
-        fill_color = "rgba(59,130,246,0.08)" if won else "rgba(249,115,22,0.08)"
+    hover_labels = [
+        f"Over {int(r['over'])}, Ball {int(r['ball_in_over'])}"
+        for _, r in inn2_clean.iterrows()
+    ]
 
-        fig_wp = go.Figure()
-        fig_wp.add_hline(y=0.5, line_dash="dash", line_color="#e5e5e5", line_width=1)
-        fig_wp.add_trace(go.Scatter(
-            x=seq, y=probs, mode="lines",
-            line={"color": line_color, "width": 1.5},
-            fill="tozeroy", fillcolor=fill_color,
-            showlegend=False,
-            hovertemplate="%{text}: <b>%{y:.1%}</b><extra></extra>",
-            text=hover_labels,
-        ))
+    won        = batting_team == match_winner
+    line_color = "#3b82f6" if won else "#f97316"
+    fill_color = "rgba(59,130,246,0.08)" if won else "rgba(249,115,22,0.08)"
 
-        result_color = "#3b82f6" if won else "#f97316"
-        result_text  = f"{batting_team.split()[-1]} {'won' if won else 'lost'}"
-        venue_short  = str(recent_match.get("venue", ""))[:30]
-        date_short   = str(recent_match.get("date",  ""))[:10]
+    fig_wp = go.Figure()
+    fig_wp.add_hline(y=0.5, line_dash="dash", line_color="#e5e5e5", line_width=1)
+    fig_wp.add_trace(go.Scatter(
+        x=seq, y=probs, mode="lines",
+        line={"color": line_color, "width": 1.5},
+        fill="tozeroy", fillcolor=fill_color,
+        showlegend=False,
+        hovertemplate="%{text}: <b>%{y:.1%}</b><extra></extra>",
+        text=hover_labels,
+    ))
 
-        fig_wp.update_layout(**CHART_THEME)
-        fig_wp.update_layout(
-            xaxis={**CHART_THEME["xaxis"], "title": {"text": "Ball", "font": {"size": 9, "color": "#aaa"}}},
-            yaxis={**CHART_THEME["yaxis"], "tickformat": ".0%", "range": [0, 1], "nticks": 5},
-            margin={**CHART_THEME["margin"], "l": 40},
-        )
+    result_color = "#3b82f6" if won else "#f97316"
+    result_text  = f"{batting_team.split()[-1]} {'won' if won else 'lost'}"
+    venue_short  = str(match_row.get("venue", ""))[:30]
+    date_short   = str(match_row.get("date",  ""))[:10]
 
-        wp_traj = [
-            html.Span(
-                f"Win Probability · {batting_team.split()[-1]} batting · {venue_short} · {date_short}",
-                className="chart-card__label",
-            ),
-            dcc.Graph(figure=fig_wp, config={"displayModeBar": False}, style={"height": "200px"}),
-            html.Div(
-                result_text,
-                style={"textAlign": "right", "fontSize": "10px", "color": result_color,
-                       "fontFamily": "IBM Plex Mono, monospace", "marginTop": "4px"},
-            ),
-        ]
+    fig_wp.update_layout(**CHART_THEME)
+    fig_wp.update_layout(
+        xaxis={**CHART_THEME["xaxis"], "title": {"text": "Ball", "font": {"size": 9, "color": "#aaa"}}},
+        yaxis={**CHART_THEME["yaxis"], "tickformat": ".0%", "range": [0, 1], "nticks": 5},
+        margin={**CHART_THEME["margin"], "l": 40},
+    )
 
-    return title, metrics, phase_chart, feed, toss_section, wp_traj
+    return [
+        html.Span(
+            f"Win Probability · {batting_team.split()[-1]} batting · {venue_short} · {date_short}",
+            className="chart-card__label",
+        ),
+        dcc.Graph(figure=fig_wp, config={"displayModeBar": False}, style={"height": "200px"}),
+        html.Div(
+            result_text,
+            style={"textAlign": "right", "fontSize": "10px", "color": result_color,
+                   "fontFamily": "IBM Plex Mono, monospace", "marginTop": "4px"},
+        ),
+    ]
