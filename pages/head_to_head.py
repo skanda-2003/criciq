@@ -41,7 +41,7 @@ layout = html.Div([
             width=4,
         ),
         dbc.Col(
-            html.P("vs", style={"textAlign": "center", "color": "#aaa",
+            html.P("vs", style={"textAlign": "center", "color": "#777",
                                 "fontSize": "11px", "marginTop": "7px"}),
             width=1,
         ),
@@ -53,17 +53,30 @@ layout = html.Div([
     ], className="card-row", align="center"),
 
     # Row 1: summary record cards
-    dbc.Row(id="h2h-metrics", className="card-row"),
+    dcc.Loading(type="circle", color="#3b82f6",
+                children=dbc.Row(id="h2h-metrics", className="card-row")),
+
+    # Row 1b: star performer cards (top scorer + top wicket-taker in this H2H)
+    dbc.Row(id="h2h-star-performers", className="card-row"),
+
+    # Row 1c: season-by-season dominance bar
+    dbc.Row([
+        dbc.Col(dcc.Loading(type="circle", color="#3b82f6",
+                            children=html.Div(id="h2h-season-dominance", className="chart-card")), width=12),
+    ], className="card-row"),
 
     # Row 2: phase chart + match feed (feed is scrollable, no full-page scroll needed)
     dbc.Row([
-        dbc.Col(html.Div(id="h2h-phase-chart", className="chart-card"), width=6),
-        dbc.Col(html.Div(id="h2h-feed"),                                 width=6),
+        dbc.Col(dcc.Loading(type="circle", color="#3b82f6",
+                            children=html.Div(id="h2h-phase-chart", className="chart-card")), width=6),
+        dbc.Col(dcc.Loading(type="circle", color="#3b82f6",
+                            children=html.Div(id="h2h-feed")),                                width=6),
     ], className="card-row"),
 
     # Row 3: toss analysis + win probability trajectory
     dbc.Row([
-        dbc.Col(html.Div(id="h2h-toss", className="chart-card"), width=5),
+        dbc.Col(dcc.Loading(type="circle", color="#3b82f6",
+                            children=html.Div(id="h2h-toss", className="chart-card")), width=5),
         dbc.Col(html.Div([
             # Match picker sits above the chart - selecting a match re-renders the WP line
             dcc.Dropdown(
@@ -72,7 +85,8 @@ layout = html.Div([
                 clearable=False,
                 style={"marginBottom": "10px"},
             ),
-            html.Div(id="h2h-wp-traj", className="chart-card"),
+            dcc.Loading(type="circle", color="#3b82f6",
+                        children=html.Div(id="h2h-wp-traj", className="chart-card")),
         ]), width=7),
     ], className="card-row"),
 
@@ -80,13 +94,15 @@ layout = html.Div([
 
 
 @callback(
-    Output("h2h-title",        "children"),
-    Output("h2h-metrics",      "children"),
-    Output("h2h-phase-chart",  "children"),
-    Output("h2h-feed",         "children"),
-    Output("h2h-toss",         "children"),
-    Output("h2h-match-picker", "options"),
-    Output("h2h-match-picker", "value"),
+    Output("h2h-title",              "children"),
+    Output("h2h-metrics",            "children"),
+    Output("h2h-star-performers",    "children"),
+    Output("h2h-season-dominance",   "children"),
+    Output("h2h-phase-chart",        "children"),
+    Output("h2h-feed",               "children"),
+    Output("h2h-toss",               "children"),
+    Output("h2h-match-picker",       "options"),
+    Output("h2h-match-picker",       "value"),
     Input("h2h-team-a",    "value"),
     Input("h2h-team-b",    "value"),
     Input("season-filter", "data"),
@@ -113,7 +129,7 @@ def update_h2h(team_a, team_b, season_data):
 
     if not team_a or not team_b or team_a == team_b:
         empty = html.P("Select two different teams.", style={"fontSize": "11px", "color": "#888"})
-        return title, [], [], empty, empty, [], None
+        return title, [], [], [], [], empty, empty, [], None
 
     h2h = mat_f[
         (mat_f["team1"].isin([team_a, team_b])) &
@@ -122,7 +138,7 @@ def update_h2h(team_a, team_b, season_data):
 
     if h2h.empty:
         empty = html.P("No head-to-head matches found.", style={"fontSize": "11px", "color": "#888"})
-        return title, [], [], empty, empty, [], None
+        return title, [], [], [], [], empty, empty, [], None
 
     # ── Summary record cards ─────────────────────────────────────────
     total  = len(h2h)
@@ -309,7 +325,115 @@ def update_h2h(team_a, team_b, season_data):
     # Default to the most recent match so the chart is never blank on load
     default_match = match_options[0]["value"] if match_options else None
 
-    return title, metrics, phase_chart, feed, toss_section, match_options, default_match
+    # ── Star performer cards ─────────────────────────────────────────
+    # Highest run-scorer and most wickets across all H2H matches in the window.
+    h2h_del_all = del_f[del_f["match_id"].isin(match_ids)]
+    h2h_legal   = h2h_del_all[~h2h_del_all["is_wide"].astype(bool)]
+
+    # Top scorer: group by batter, sum runs + count legal balls for SR
+    bat_grp   = h2h_legal.groupby("batter").agg(runs=("batter_runs", "sum"), balls=("batter_runs", "count"))
+    bat_grp   = bat_grp[bat_grp["balls"] >= 10]  # at least 10 balls faced
+    top_scorer_name = top_scorer_runs = top_scorer_sr = "—"
+    if not bat_grp.empty:
+        top_bat = bat_grp.sort_values("runs", ascending=False).iloc[0]
+        from src.name_map import get_full_name as _gfn
+        top_scorer_name  = _gfn(top_bat.name)
+        top_scorer_runs  = int(top_bat["runs"])
+        top_scorer_sr    = round(top_bat["runs"] / top_bat["balls"] * 100, 1)
+
+    # Top wicket-taker: count bowler-credited wickets
+    BOWLER_WKTS = {"caught", "bowled", "lbw", "caught and bowled", "stumped", "hit wicket"}
+    wkt_del  = h2h_legal[(h2h_legal["wicket"].astype(bool)) & (h2h_legal["wicket_kind"].isin(BOWLER_WKTS))]
+    wkt_grp  = wkt_del.groupby("bowler").size().rename("wickets")
+    top_wicket_name = top_wkt_count = top_wkt_econ = "—"
+    if not wkt_grp.empty:
+        top_wkt     = wkt_grp.sort_values(ascending=False).iloc[:1]
+        bowler_name = top_wkt.index[0]
+        top_wicket_name = _gfn(bowler_name)
+        top_wkt_count   = int(top_wkt.iloc[0])
+        # Economy: total runs conceded / overs bowled (use all deliveries for run total)
+        b_all   = h2h_del_all[h2h_del_all["bowler"] == bowler_name]
+        b_legal = h2h_legal[h2h_legal["bowler"] == bowler_name]
+        if len(b_legal) >= 6:
+            top_wkt_econ = round(b_all["total_runs"].sum() / (len(b_legal) / 6), 2)
+
+    def _star_card(icon_color, heading, line1):
+        return html.Div([
+            html.Span(heading, className="metric-card__label"),
+            html.Div(line1, className="metric-card__value",
+                     style={"fontSize": "13px", "fontFamily": "IBM Plex Mono, monospace"}),
+        ], className="metric-card", style={"borderLeft": f"3px solid {icon_color}"})
+
+    bat_line  = f"{top_scorer_name}  {top_scorer_runs} runs @ SR {top_scorer_sr}"
+    bowl_line = f"{top_wicket_name}  {top_wkt_count} wkts @ econ {top_wkt_econ}"
+
+    star_performers = [
+        dbc.Col(_star_card("#3b82f6", "Top Scorer in these Matchups",    bat_line),  width=6),
+        dbc.Col(_star_card("#f97316", "Top Wicket-Taker in these Matchups", bowl_line), width=6),
+    ]
+
+    # ── Season dominance chart ───────────────────────────────────────
+    # Horizontal stacked bar: one row per season, two segments (team_a wins, team_b wins).
+    # Seasons with 0 H2H matches in the window are skipped.
+    seasons_played = sorted(h2h["season"].unique())
+    fig_dom = go.Figure()
+
+    a_wins_by_season = h2h[h2h["winner"] == team_a].groupby("season").size()
+    b_wins_by_season = h2h[h2h["winner"] == team_b].groupby("season").size()
+    season_labels    = [str(int(s)) for s in seasons_played]
+
+    a_vals = [int(a_wins_by_season.get(s, 0)) for s in seasons_played]
+    b_vals = [int(b_wins_by_season.get(s, 0)) for s in seasons_played]
+
+    fig_dom.add_trace(go.Bar(
+        name=team_a.split()[-1],
+        y=season_labels, x=a_vals,
+        orientation="h",
+        marker_color="#3b82f6",
+        marker_line_width=0,
+        text=[str(v) if v > 0 else "" for v in a_vals],
+        textposition="inside",
+        textfont={"size": 9, "color": "white"},
+    ))
+    fig_dom.add_trace(go.Bar(
+        name=team_b.split()[-1],
+        y=season_labels, x=b_vals,
+        orientation="h",
+        marker_color="#f97316",
+        marker_line_width=0,
+        text=[str(v) if v > 0 else "" for v in b_vals],
+        textposition="inside",
+        textfont={"size": 9, "color": "white"},
+    ))
+
+    fig_dom.update_layout(**CHART_THEME)
+    fig_dom.update_layout(
+        barmode="stack",
+        showlegend=True,
+        margin={**CHART_THEME["margin"], "l": 55},
+        xaxis={**CHART_THEME["xaxis"], "title": {"text": "Wins", "font": {"size": 9, "color": "#777"}}},
+        yaxis={
+            **CHART_THEME["yaxis"],
+            "tickmode": "array",
+            "tickvals": season_labels,
+            "ticktext": season_labels,
+            "tickfont": {"family": "Inter, system-ui, sans-serif", "size": 9, "color": "#777"},
+        },
+        legend={"font": {"size": 9, "color": "#888", "family": "Inter, system-ui, sans-serif"},
+                "orientation": "h", "yanchor": "bottom", "y": 1.02, "xanchor": "right", "x": 1},
+    )
+    # Height scales with number of seasons so bars don't get squished
+    chart_height = max(100, len(seasons_played) * 28 + 40)
+
+    season_dominance = [
+        html.Span("Season Dominance", className="chart-card__label"),
+        dcc.Graph(figure=fig_dom, config={"displayModeBar": False}, style={"height": f"{chart_height}px"}),
+    ]
+
+    return (
+        title, metrics, star_performers, season_dominance,
+        phase_chart, feed, toss_section, match_options, default_match,
+    )
 
 
 @callback(
@@ -409,7 +533,7 @@ def update_wp_trajectory(match_id, team_a, team_b, season_data):
 
     fig_wp.update_layout(**CHART_THEME)
     fig_wp.update_layout(
-        xaxis={**CHART_THEME["xaxis"], "title": {"text": "Ball", "font": {"size": 9, "color": "#aaa"}}},
+        xaxis={**CHART_THEME["xaxis"], "title": {"text": "Ball", "font": {"size": 9, "color": "#777"}}},
         yaxis={**CHART_THEME["yaxis"], "tickformat": ".0%", "range": [0, 1], "nticks": 5},
         margin={**CHART_THEME["margin"], "l": 40},
     )

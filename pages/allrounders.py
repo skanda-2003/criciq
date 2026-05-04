@@ -94,26 +94,25 @@ layout = html.Div([
             html.Div([
                 html.Span("Key Findings · 2021-26", className="chart-card__label"),
                 _finding("#3b82f6", [
-                    html.Strong("Only 8 of 131 qualified allrounders sit in the elite quadrant"),
-                    " (positive z-score in both batting and bowling). Genuine two-department "
-                    "contributors are the rarest archetype in IPL cricket.",
+                    html.Strong("Only 5 of 119 qualified allrounders sit in the elite quadrant"),
+                    " (positive z-score in both departments, 50+ balls in both). Genuine "
+                    "two-department contributors are the rarest archetype in IPL cricket.",
                 ]),
                 _finding("#22c55e", [
-                    html.Strong("Sunil Narine is the most consistent allrounder across seasons."),
-                    " His 0.82 bowling z + 0.25 batting z over 5 seasons reflects sustained "
-                    "two-department value - not a single breakout year.",
+                    html.Strong("Sunil Narine leads the combined leaderboard (1.07)."),
+                    " His 0.82 bowling z + 0.25 batting z over 5 seasons is the only "
+                    "sustained two-department contribution in this era.",
                 ]),
                 _finding("#f97316", [
-                    html.Strong("Travis Head leads the combined leaderboard (1.40)"),
-                    " but is 'batting-heavy' - his bowling z is -0.15. "
-                    "High combined scores don't always mean balance; they can reflect "
-                    "one elite department outweighing a weak second.",
+                    html.Strong("Jasprit Bumrah places 3rd in combined z-score (0.68)"),
+                    " despite near-zero batting. This shows how dominant bowling alone "
+                    "can elevate a combined score - it is not the same as being balanced.",
                 ]),
                 _finding("#ef4444", [
                     html.Strong("Abhishek Sharma won the season crown two years running (2025-26)."),
                     " A left-handed opening bat who also bowls left-arm spin, "
-                    "he is the first player to sustain elite allrounder status "
-                    "for consecutive seasons since Narine in 2022-24.",
+                    "he is one of very few players sustaining elite allrounder status "
+                    "across consecutive seasons.",
                 ]),
             ], className="chart-card findings-card"),
             width=4,
@@ -148,10 +147,34 @@ def update_allrounders(season_data):
 
     # Filter the pre-computed impact CSV to the selected window.
     # The CSV only has 2021-26 data, so "all time" still shows 2021-26.
+    # Require 50+ legal balls bowled to qualify as a bowler - this removes
+    # occasional bowlers like TM Head (10 balls) who inflate the allrounder count.
+    del_window = DEL[
+        (DEL["season"] >= min_yr) & (DEL["season"] <= max_yr) &
+        (~DEL["super_over"].astype(bool)) & (~DEL["is_wide"].astype(bool))
+    ]
+    bowl_qualified = set(
+        del_window.groupby("bowler").size()
+        .loc[lambda s: s >= 50]
+        .index
+    )
+    # Batting qualification: 50+ balls faced total in the window.
+    # Without this, pure bowlers with a batting z-score (even from minimal batting)
+    # would appear - Bumrah, Chakravarthy, Markande etc. are not allrounders.
+    bat_qualified = set(
+        del_window[~del_window["is_wide"].astype(bool)]
+        .groupby("batter").size()
+        .loc[lambda s: s >= 50]
+        .index
+    )
+
     impact_f = _IMPACT[
         (_IMPACT["season"] >= min_yr) &
         (_IMPACT["season"] <= max_yr) &
-        (_IMPACT["avg_bowling_z"].notna())  # only rows where the player bowled
+        (_IMPACT["avg_bowling_z"].notna()) &
+        (_IMPACT["avg_batting_z"].notna()) &
+        (_IMPACT["player"].isin(bowl_qualified)) &
+        (_IMPACT["player"].isin(bat_qualified))
     ].copy()
 
     # ── Career averages: mean z-scores across all seasons in the window ──
@@ -322,7 +345,7 @@ def update_allrounders(season_data):
         width=0.5,
         text=[f"{v:.2f}" for v in top15["combined_z"]],
         textposition="outside",
-        textfont={"size": 9, "color": "#aaa", "family": "IBM Plex Mono, monospace"},
+        textfont={"size": 9, "color": "#777", "family": "IBM Plex Mono, monospace"},
         hovertemplate="<b>%{y}</b><br>Combined z: %{x:.2f}<extra></extra>",
     ))
     fig_lb.update_layout(**CHART_THEME)
@@ -378,7 +401,7 @@ def update_allrounders(season_data):
         width=0.5,
         text=depth["count"].astype(str),
         textposition="outside",
-        textfont={"size": 9, "color": "#aaa", "family": "IBM Plex Mono, monospace"},
+        textfont={"size": 9, "color": "#777", "family": "IBM Plex Mono, monospace"},
         hovertemplate="<b>%{y}</b><br>Allrounders: %{x}<extra></extra>",
     ))
     fig_depth.update_layout(**CHART_THEME)

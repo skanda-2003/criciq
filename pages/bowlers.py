@@ -112,18 +112,31 @@ layout = html.Div([
         ),
     ], className="card-row"),
 
+    # Row 4 - powerplay economy vs death economy scatter (complete bowler quadrant chart)
+    dbc.Row([
+        dbc.Col(
+            html.Div([
+                html.Span(id="bowler-scatter-label", className="chart-card__label"),
+                dcc.Graph(id="bowler-scatter-chart", config={"displayModeBar": False}, style={"height": "360px"}),
+            ], className="chart-card"),
+            width=12,
+        ),
+    ], className="card-row"),
+
 ])
 
 
 @callback(
-    Output("bowler-title",      "children"),
-    Output("bowler-metrics",    "children"),
-    Output("bowler-death-chart","figure"),
-    Output("bowler-death-label","children"),
-    Output("bowler-pp-chart",   "figure"),
-    Output("bowler-pp-label",   "children"),
-    Output("bowler-wkt-chart",  "figure"),
-    Output("bowler-wkt-label",  "children"),
+    Output("bowler-title",        "children"),
+    Output("bowler-metrics",      "children"),
+    Output("bowler-death-chart",  "figure"),
+    Output("bowler-death-label",  "children"),
+    Output("bowler-pp-chart",     "figure"),
+    Output("bowler-pp-label",     "children"),
+    Output("bowler-wkt-chart",    "figure"),
+    Output("bowler-wkt-label",    "children"),
+    Output("bowler-scatter-chart","figure"),
+    Output("bowler-scatter-label","children"),
     Input("season-filter", "data"),
 )
 def update_bowler(season_data):
@@ -243,7 +256,7 @@ def update_bowler(season_data):
         width=0.5,
         text=[f"{e:.2f}  ({b}b)" for e, b in zip(death_top["economy"], death_top["balls_bowled"])],
         textposition="outside",
-        textfont={"size": 9, "color": "#aaa", "family": "IBM Plex Mono, monospace"},
+        textfont={"size": 9, "color": "#777", "family": "IBM Plex Mono, monospace"},
         hovertemplate="<b>%{y}</b><br>Death Economy: %{x:.2f}<extra></extra>",
     ))
     fig_death.add_vline(x=league_death_econ, line_dash="dot", line_color="#ccc", line_width=1)
@@ -278,7 +291,7 @@ def update_bowler(season_data):
         width=0.5,
         text=[f"{w}  ({b}b)" for w, b in zip(pp_top["wickets"], pp_top["balls_bowled"])],
         textposition="outside",
-        textfont={"size": 9, "color": "#aaa", "family": "IBM Plex Mono, monospace"},
+        textfont={"size": 9, "color": "#777", "family": "IBM Plex Mono, monospace"},
         hovertemplate="<b>%{y}</b><br>PP Wickets: %{x}<extra></extra>",
     ))
     fig_pp.update_layout(**CHART_THEME)
@@ -385,9 +398,117 @@ def update_bowler(season_data):
     )
     wkt_label = f"Wicket Type Breakdown · Top 15 Wicket-Takers · {min_yr}-{max_yr}"
 
+    # ── Chart D: PP economy vs death economy scatter ──────────────────
+    # Only bowlers with 50+ legal balls in BOTH phases qualify.
+    # Lower economy = better in both axes, so "Complete Bowler" is bottom-left.
+    # Analogue of the complete batsmen scatter on the batters page.
+    pp_legal   = legal[legal["phase"] == "powerplay"]
+    death_legal = legal[legal["phase"] == "death"]
+
+    pp_balls   = pp_legal.groupby("bowler").size().rename("pp_balls")
+    death_balls = death_legal.groupby("bowler").size().rename("death_balls")
+
+    pp_all   = del_f[del_f["phase"] == "powerplay"]
+    death_all = del_f[del_f["phase"] == "death"]
+
+    pp_runs   = pp_all.groupby("bowler")["total_runs"].sum().rename("pp_runs")
+    death_runs = death_all.groupby("bowler")["total_runs"].sum().rename("death_runs")
+
+    scatter_df = (
+        pd.concat([pp_balls, death_balls, pp_runs, death_runs], axis=1)
+        .dropna()
+        .query("pp_balls >= 50 and death_balls >= 50")
+        .copy()
+    )
+    scatter_df["pp_econ"]    = scatter_df["pp_runs"]    / (scatter_df["pp_balls"]    / 6)
+    scatter_df["death_econ"] = scatter_df["death_runs"] / (scatter_df["death_balls"] / 6)
+    scatter_df.index.name    = "bowler"
+    scatter_df                = scatter_df.reset_index()
+    scatter_df["display_name"] = scatter_df["bowler"].map(get_full_name)
+
+    # Quadrant midpoints for reference lines
+    pp_med    = scatter_df["pp_econ"].median()
+    death_med = scatter_df["death_econ"].median()
+
+    fig_scatter = go.Figure()
+
+    # Shaded quadrant backgrounds — axis is clamped to 10/12 so x_max_s/y_max_s
+    # match the visible area so the shading doesn't bleed past the axis limits.
+    x_min   = scatter_df["pp_econ"].min()    - 0.5
+    x_max_s = 10
+    y_min   = scatter_df["death_econ"].min() - 0.5
+    y_max_s = 12
+
+    for x0, x1, y0, y1, color, label, lx, ly in [
+        (x_min, pp_med, y_min, death_med, "rgba(34,197,94,0.06)",   "Complete Bowler", x_min + 0.1, y_min + 0.2),
+        (pp_med, x_max_s, y_min, death_med, "rgba(59,130,246,0.06)", "Death Specialist", pp_med + 0.1, y_min + 0.2),
+        (x_min, pp_med, death_med, y_max_s, "rgba(249,115,22,0.06)", "PP Specialist",   x_min + 0.1, death_med + 0.2),
+        (pp_med, x_max_s, death_med, y_max_s, "rgba(200,200,200,0.06)", "Expensive Both", pp_med + 0.1, death_med + 0.2),
+    ]:
+        fig_scatter.add_shape(type="rect", x0=x0, x1=x1, y0=y0, y1=y1,
+                              fillcolor=color, line_width=0, layer="below")
+        fig_scatter.add_annotation(x=lx, y=ly, text=label, showarrow=False,
+                                   font={"size": 8, "color": "#555", "family": "Inter, system-ui, sans-serif"},
+                                   xanchor="left")
+
+    fig_scatter.add_vline(x=pp_med,    line_dash="dot", line_color="#e5e5e5", line_width=1)
+    fig_scatter.add_hline(y=death_med, line_dash="dot", line_color="#e5e5e5", line_width=1)
+
+    # Split into two traces: label only the "Complete Bowler" quadrant (both economies
+    # below median) - the rest are hover-only to avoid crowding the chart.
+    elite_mask = (scatter_df["pp_econ"] < pp_med) & (scatter_df["death_econ"] < death_med)
+    elite_df   = scatter_df[elite_mask]
+    rest_df    = scatter_df[~elite_mask]
+
+    hover_tmpl = (
+        "<b>%{text}</b><br>"
+        "PP econ: %{x:.2f}  (%{customdata[0]} balls)<br>"
+        "Death econ: %{y:.2f}  (%{customdata[1]} balls)<extra></extra>"
+    )
+
+    # Non-elite: grey markers, name only on hover
+    fig_scatter.add_trace(go.Scatter(
+        x=rest_df["pp_econ"],
+        y=rest_df["death_econ"],
+        mode="markers",
+        marker={"color": "#888", "size": 6, "opacity": 0.55},
+        text=rest_df["display_name"],
+        customdata=list(zip(rest_df["pp_balls"], rest_df["death_balls"])),
+        hovertemplate=hover_tmpl,
+        showlegend=False,
+    ))
+    # Complete Bowler quadrant: colored + labeled
+    if not elite_df.empty:
+        fig_scatter.add_trace(go.Scatter(
+            x=elite_df["pp_econ"],
+            y=elite_df["death_econ"],
+            mode="markers+text",
+            marker={"color": "#22c55e", "size": 8, "opacity": 0.85},
+            text=elite_df["display_name"],
+            textposition="top center",
+            textfont={"size": 7, "color": "#22c55e", "family": "Inter, system-ui, sans-serif"},
+            customdata=list(zip(elite_df["pp_balls"], elite_df["death_balls"])),
+            hovertemplate=hover_tmpl,
+            showlegend=False,
+        ))
+
+    fig_scatter.update_layout(**CHART_THEME)
+    fig_scatter.update_layout(
+        xaxis={**CHART_THEME["xaxis"], "range": [x_min, 10], "title": {"text": "Powerplay Economy →  (lower = better)", "font": {"size": 9, "color": "#777"}}},
+        yaxis={**CHART_THEME["yaxis"], "range": [y_min, 12], "title": {"text": "Death Economy →  (lower = better)", "font": {"size": 9, "color": "#777"}}},
+        margin={**CHART_THEME["margin"], "l": 50, "r": 20, "t": 12, "b": 40},
+    )
+    n_complete = len(scatter_df[(scatter_df["pp_econ"] < pp_med) & (scatter_df["death_econ"] < death_med)])
+    scatter_label = (
+        f"PP Economy vs Death Economy · 50+ balls in both phases · "
+        f"{n_complete} complete bowlers (below median in both) · {min_yr}-{max_yr}"
+        f" · capped at PP≤10 / Death≤12"
+    )
+
     return (
         title, metrics,
         fig_death, death_label,
         fig_pp,    pp_label,
         fig_wkt,   wkt_label,
+        fig_scatter, scatter_label,
     )

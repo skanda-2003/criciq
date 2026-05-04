@@ -12,6 +12,10 @@ app = dash.Dash(
     meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
 )
 
+# Expose the underlying Flask instance so gunicorn can serve it.
+# Render's Procfile points at this object: gunicorn app:server
+server = app.server
+
 app.layout = html.Div([
     # Store lives outside the page container so it persists across page navigation.
     # Initial value = 2021-26 (the default analysis window).

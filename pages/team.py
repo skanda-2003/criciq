@@ -237,7 +237,7 @@ def update_team(selected_team, season_data):
             width=0.35,
             text=[f"{v:.0f}" for v in team_phase_avg],
             textposition="outside",
-            textfont={"size": 9, "color": "#aaa", "family": "IBM Plex Mono, monospace"},
+            textfont={"size": 9, "color": "#777", "family": "IBM Plex Mono, monospace"},
         ),
         go.Bar(
             name="League avg",
@@ -248,7 +248,7 @@ def update_team(selected_team, season_data):
             width=0.35,
             text=[f"{v:.0f}" for v in league_phase_avg],
             textposition="outside",
-            textfont={"size": 9, "color": "#aaa", "family": "IBM Plex Mono, monospace"},
+            textfont={"size": 9, "color": "#777", "family": "IBM Plex Mono, monospace"},
         ),
     ])
     fig_phase.update_layout(**CHART_THEME)
@@ -284,7 +284,7 @@ def update_team(selected_team, season_data):
             width=0.5,
             text=[f"{p:.0f}%  ({n}m)" for p, n in zip(venue_df["bat_pct"], venue_df["n"])],
             textposition="outside",
-            textfont={"size": 9, "color": "#aaa", "family": "IBM Plex Mono, monospace"},
+            textfont={"size": 9, "color": "#777", "family": "IBM Plex Mono, monospace"},
             hovertemplate="<b>%{y}</b><br>Bat first: %{x:.0f}%<extra></extra>",
         ))
         fig_toss.add_vline(x=50, line_dash="dot", line_color="#ccc", line_width=1)
@@ -379,7 +379,7 @@ def update_team(selected_team, season_data):
         width=0.5,
         text=depth_per_season["count"].astype(int).astype(str),
         textposition="outside",
-        textfont={"size": 9, "color": "#aaa", "family": "IBM Plex Mono, monospace"},
+        textfont={"size": 9, "color": "#777", "family": "IBM Plex Mono, monospace"},
         customdata=depth_per_season[["count", "total"]].values,
         hovertemplate=(
             "<b>%{x}</b><br>"
