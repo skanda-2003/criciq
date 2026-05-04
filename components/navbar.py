@@ -48,6 +48,7 @@ def create_navbar():
             dbc.NavLink("Allrounders",  href="/allrounders",  active="exact", className="ciq-navbar__nav-link"),
             dbc.NavLink("Simulator",    href="/simulator",    active="exact", className="ciq-navbar__nav-link"),
             dbc.NavLink("Head-to-Head", href="/head-to-head", active="exact", className="ciq-navbar__nav-link"),
+            dbc.NavLink("Teams",        href="/team",         active="exact", className="ciq-navbar__nav-link"),
         ], className="ciq-navbar__nav"),
 
         # Season filter toggle - persists across all pages via dcc.Store in app.py
