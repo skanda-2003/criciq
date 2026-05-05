@@ -520,15 +520,9 @@ def update_bowler(season_data):
     )
     season_bowl = season_balls.merge(season_wkts_df, on=["season", "bowler"], how="left")
     season_bowl["wickets"] = season_bowl["wickets"].fillna(0).astype(int)
-    season_bowl_q = season_bowl[season_bowl["balls_bowled"] >= 50].copy()
-    # Within each season, standardise wicket counts across all 50+ ball qualifiers
-    season_bowl_q["wkt_z"] = season_bowl_q.groupby("season")["wickets"].transform(
-        lambda x: (x - x.mean()) / x.std() if x.std() > 0 else 0.0
-    )
-
     season_best = (
-        season_bowl_q
-        .loc[season_bowl_q.groupby("season")["wkt_z"].idxmax()]
+        season_bowl[season_bowl["balls_bowled"] >= 50]
+        .loc[lambda df: df.groupby("season")["wickets"].idxmax()]
         .sort_values("season")
         .reset_index(drop=True)
     )
@@ -540,18 +534,17 @@ def update_bowler(season_data):
 
     fig_season = go.Figure(go.Bar(
         x=season_best["season_str"],
-        y=season_best["wkt_z"],
+        y=season_best["wickets"],
         marker_color="#22c55e",
         marker_line_width=0,
         width=0.5,
         text=season_best["short_name"],
         textposition="outside",
         textfont={"size": 9, "color": "#888", "family": "IBM Plex Mono, monospace"},
-        customdata=season_best[["display_name", "wkt_z", "wickets", "balls_bowled"]].values,
+        customdata=season_best[["display_name", "wickets", "balls_bowled"]].values,
         hovertemplate=(
             "<b>%{customdata[0]}</b><br>"
-            "Wickets z-score: <b>%{customdata[1]:.2f}</b><br>"
-            "Wickets: <b>%{customdata[2]}</b>  (%{customdata[3]:.0f} balls)"
+            "Wickets: <b>%{customdata[1]}</b>  (%{customdata[2]:.0f} balls)"
             "<extra></extra>"
         ),
     ))
@@ -561,7 +554,7 @@ def update_bowler(season_data):
         yaxis={**CHART_THEME["yaxis"], "visible": False},
         margin={**CHART_THEME["margin"], "t": 25},
     )
-    season_label = f"Season-Best Bowler · Highest Wickets z-score per Season · {min_yr}-{max_yr}"
+    season_label = f"Season-Best Bowler · Most Wickets per Season · {min_yr}-{max_yr}"
 
     return (
         title, metrics,

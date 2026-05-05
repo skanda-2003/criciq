@@ -361,7 +361,7 @@ FULL_NAMES: dict[str, str] = {
     # V
     "V Kaverappa": "Vidwath Kaverappa",
     "V Kohli": "Virat Kohli",
-    "V Nigam": "Vaibhav Nigam",
+    "V Nigam": "Vipraj Nigam",
     "V Puthur": "Vignesh Puthur",
     "V Shankar": "Vijay Shankar",
     "V Suryavanshi": "Vaibhav Suryavanshi",

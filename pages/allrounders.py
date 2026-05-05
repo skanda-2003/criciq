@@ -14,6 +14,9 @@ dash.register_page(__name__, path="/allrounders", name="Allrounders", title="Cri
 # Pre-computed z-scores; season column lets the callback filter by window
 _IMPACT = pd.read_csv("data/processed/player_impact_season.csv")
 
+# Within-pool allrounder z-scores (batting SR + bowling economy, scored vs allrounder peers only)
+_AR_SCORES = pd.read_csv("data/processed/allrounder_scores.csv")
+
 # Canonical short team names for the depth chart
 _TEAM_SHORT = {
     "Mumbai Indians":              "MI",
@@ -94,25 +97,24 @@ layout = html.Div([
             html.Div([
                 html.Span("Key Findings · 2021-26", className="chart-card__label"),
                 _finding("#3b82f6", [
-                    html.Strong("Only 5 of 119 qualified allrounders sit in the elite quadrant"),
-                    " (positive z-score in both departments, 50+ balls in both). Genuine "
-                    "two-department contributors are the rarest archetype in IPL cricket.",
+                    html.Strong("Only 9 of 43 qualified allrounders sit in the elite quadrant"),
+                    " (above-average in both batting and bowling among allrounder peers). "
+                    "Genuine two-department contributors are the rarest archetype in IPL cricket.",
                 ]),
                 _finding("#22c55e", [
-                    html.Strong("Sunil Narine leads the combined leaderboard (1.07)."),
-                    " His 0.82 bowling z + 0.25 batting z over 5 seasons is the only "
-                    "sustained two-department contribution in this era.",
+                    html.Strong("Sunil Narine leads the combined leaderboard (2.82)."),
+                    " A combined 1.35 batting z + 1.48 bowling z - scored against allrounder "
+                    "peers only - makes him the most complete allrounder in this era.",
                 ]),
                 _finding("#f97316", [
-                    html.Strong("Jasprit Bumrah places 3rd in combined z-score (0.68)"),
-                    " despite near-zero batting. This shows how dominant bowling alone "
-                    "can elevate a combined score - it is not the same as being balanced.",
+                    html.Strong("Hardik Pandya and Andre Russell sit below 0"),
+                    " despite elite batting. Both concede well above the allrounder-pool average, "
+                    "dragging their combined score negative - a fair reflection of their bowling load.",
                 ]),
                 _finding("#ef4444", [
-                    html.Strong("Abhishek Sharma won the season crown two years running (2025-26)."),
-                    " A left-handed opening bat who also bowls left-arm spin, "
-                    "he is one of very few players sustaining elite allrounder status "
-                    "across consecutive seasons.",
+                    html.Strong("Rashid Khan was the season-best allrounder in 2023."),
+                    " His exceptional economy combined with above-average batting for a spinner "
+                    "produced the highest single-season combined z-score (4.14) in the window.",
                 ]),
             ], className="chart-card findings-card"),
             width=4,
@@ -145,44 +147,25 @@ def update_allrounders(season_data):
         else f"Allrounders · {min_yr}-{max_yr}"
     )
 
-    # Filter the pre-computed impact CSV to the selected window.
-    # The CSV only has 2021-26 data, so "all time" still shows 2021-26.
-    # Require 50+ legal balls bowled to qualify as a bowler - this removes
-    # occasional bowlers like TM Head (10 balls) who inflate the allrounder count.
+    # del_window is still needed for Chart C (team lookup) and Chart D (season-best)
     del_window = DEL[
         (DEL["season"] >= min_yr) & (DEL["season"] <= max_yr) &
         (~DEL["super_over"]) & (~DEL["is_wide"])
     ]
-    bowl_qualified = set(
-        del_window.groupby("bowler").size()
-        .loc[lambda s: s >= 50]
-        .index
-    )
-    # Batting qualification: 50+ balls faced total in the window.
-    # Without this, pure bowlers with a batting z-score (even from minimal batting)
-    # would appear - Bumrah, Chakravarthy, Markande etc. are not allrounders.
-    bat_qualified = set(
-        del_window[~del_window["is_wide"]]
-        .groupby("batter").size()
-        .loc[lambda s: s >= 50]
-        .index
-    )
 
-    impact_f = _IMPACT[
-        (_IMPACT["season"] >= min_yr) &
-        (_IMPACT["season"] <= max_yr) &
-        (_IMPACT["avg_bowling_z"].notna()) &
-        (_IMPACT["avg_batting_z"].notna()) &
-        (_IMPACT["player"].isin(bowl_qualified)) &
-        (_IMPACT["player"].isin(bat_qualified))
+    # Filter the pre-computed allrounder scores to the selected window.
+    # These z-scores are computed within the allrounder pool only (not against all players),
+    # so Hardik's bowling economy is compared against other allrounders - not Bumrah.
+    ar_f = _AR_SCORES[
+        (_AR_SCORES["season"] >= min_yr) & (_AR_SCORES["season"] <= max_yr)
     ].copy()
 
-    # ── Career averages: mean z-scores across all seasons in the window ──
-    career = impact_f.groupby("player").agg(
-        avg_bat_z =("avg_batting_z", "mean"),
-        avg_bowl_z=("avg_bowling_z", "mean"),
-        seasons   =("season", "nunique"),
-        matches   =("matches_played", "sum"),
+    # Career averages: mean z-scores across all qualifying seasons in the window
+    career = ar_f.groupby("player").agg(
+        avg_bat_z =("bat_z",   "mean"),
+        avg_bowl_z=("bowl_z",  "mean"),
+        seasons   =("season",  "nunique"),
+        matches   =("matches", "sum"),
     ).reset_index()
     career["combined_z"]   = career["avg_bat_z"] + career["avg_bowl_z"]
     career["display_name"] = career["player"].map(get_full_name)
@@ -297,8 +280,18 @@ def update_allrounders(season_data):
 
     # ── Metric cards ─────────────────────────────────────────────────
     best_combined_row = career.loc[career["combined_z"].idxmax()]
-    best_bat_row      = career.loc[career["avg_bat_z"].idxmax()]
-    best_bowl_row     = career.loc[career["avg_bowl_z"].idxmax()]
+    # Place the combined leader in their stronger individual card; show the runner-up in the other.
+    # This avoids the same player appearing in both individual cards.
+    combined_player = best_combined_row["player"]
+    others = career[career["player"] != combined_player]
+    if best_combined_row["avg_bowl_z"] >= best_combined_row["avg_bat_z"]:
+        # Bowling is their stronger department - show them in the bowling card
+        best_bowl_row = best_combined_row
+        best_bat_row  = others.loc[others["avg_bat_z"].idxmax()]
+    else:
+        # Batting is their stronger department - show them in the batting card
+        best_bat_row  = best_combined_row
+        best_bowl_row = others.loc[others["avg_bowl_z"].idxmax()]
 
     # Progress bars: combined z is typically < 2.5 at elite level; individual z < 1.5
     p_n     = int(min(n_allrounders / 150 * 100, 100))
