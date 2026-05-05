@@ -53,7 +53,7 @@ These came out of the analysis and are surfaced in the dashboard - I wrote the h
 - The engineered feature `run_rate_pressure` (= required run rate / current run rate) ranked as a top-3 feature importance in the Random Forest model, validating the domain-motivated approach over using raw rates independently.
 
 **Allrounders**
-- Of the 57 players who qualify with both batting (50+ balls faced) and bowling (50+ balls bowled) thresholds, only a subset have positive z-scores in both dimensions - meaning genuine elite allrounders are rarer than commentators suggest.
+- The allrounder pool applies a bowling regularity filter (`bowl_per_match >= 6` career average) on top of the 50-ball volume threshold. Without it, players who bowled 50 balls across 8 lucky matches displace genuine allrounders like Jadeja and Axar Patel. Of players who pass this stricter bar, only a subset sit in the elite quadrant (positive z-score in both batting and bowling) - genuine two-department contributors are rarer than commentators suggest.
 
 ---
 
@@ -77,7 +77,7 @@ Logistic Regression baseline trained on 2019-2026 chase data. Features include c
 Composite metric: batting contribution vs phase average (50%), bowling economy vs venue average (35%), fielding from wicket records (15%). Weights are per-role - a pure batsman is not penalised for not bowling. Produces per-match scores and season leaderboards from 2021-26.
 
 **6. Allrounder Stats** (`notebooks/07_allrounder_stats.ipynb`)
-Within-pool z-scores for batting SR and bowling economy, computed against only the allrounder pool (50+ balls faced AND 50+ balls bowled in the same season). Saves `allrounder_scores.csv` and `allrounder_season_best.csv` covering all seasons 2008-2026.
+Within-pool z-scores for batting SR and bowling economy. The pool requires 50+ balls faced AND 50+ balls bowled in the same season, then applies a `bowl_per_match >= 6` career filter to remove players who hit the volume threshold via a small number of lucky appearances. Z-scores are re-computed within this stricter pool. The dashboard callback adds a per-window consistency filter (2+ seasons for 2021-26, 3+ for all-time) and re-normalizes z-scores at render time. Saves `allrounder_scores.csv` and `allrounder_season_best.csv` covering all seasons 2008-2026.
 
 **7. Batter Season Stats** (`notebooks/08_batter_season_stats.ipynb`)
 Per-batter per-season stats for all three phases: balls, runs, SR, boundary%, dot%. Saves `batter_phase_season.csv` - one row per batter per season with all phase columns. The dashboard aggregates across seasons client-side so any season window works correctly.

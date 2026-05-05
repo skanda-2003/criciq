@@ -6,7 +6,6 @@ import plotly.graph_objects as go
 
 from components.metric_card import metric_card
 from components.charts import CHART_THEME
-from data.loader import DEL
 from src.name_map import get_full_name
 
 dash.register_page(__name__, path="/allrounders", name="Allrounders", title="CricIQ - Allrounders")
@@ -21,25 +20,6 @@ _AR_SCORES = pd.read_csv("data/processed/allrounder_scores.csv")
 _BAT = pd.read_csv("data/processed/batter_phase_season.csv")
 
 # Canonical short team names for the depth chart
-_TEAM_SHORT = {
-    "Mumbai Indians":              "MI",
-    "Lucknow Super Giants":        "LSG",
-    "Delhi Capitals":              "DC",
-    "Delhi Daredevils":            "DC",
-    "Kolkata Knight Riders":       "KKR",
-    "Sunrisers Hyderabad":         "SRH",
-    "Rajasthan Royals":            "RR",
-    "Punjab Kings":                "PBKS",
-    "Kings XI Punjab":             "PBKS",
-    "Royal Challengers Bengaluru": "RCB",
-    "Royal Challengers Bangalore": "RCB",
-    "Chennai Super Kings":         "CSK",
-    "Gujarat Titans":              "GT",
-    "Rising Pune Supergiant":      "RPS",
-    "Rising Pune Supergiants":     "RPS",
-}
-
-
 def _finding(dot_color, children):
     return html.Div([
         html.Span(style={
@@ -150,12 +130,6 @@ def update_allrounders(season_data):
         else f"Allrounders · {min_yr}-{max_yr}"
     )
 
-    # del_window is needed for Chart C (primary team lookup per allrounder)
-    del_window = DEL[
-        (DEL["season"] >= min_yr) & (DEL["season"] <= max_yr) &
-        (~DEL["super_over"]) & (~DEL["is_wide"])
-    ]
-
     # Filter the pre-computed allrounder scores to the selected window.
     # These z-scores are computed within the allrounder pool only (not against all players),
     # so Hardik's bowling economy is compared against other allrounders - not Bumrah.
@@ -177,6 +151,23 @@ def update_allrounders(season_data):
         .index
     )
     ar_f = ar_f[ar_f["player"].isin(genuine_batters)]
+
+    # Consistency filter: how many qualifying seasons required depends on the window.
+    # A 6-season modern window needs fewer seasons than an all-time span of 19 seasons.
+    min_seasons = 2 if min_yr >= 2021 else 3
+    season_counts = ar_f.groupby("player")["season"].nunique()
+    ar_f = ar_f[ar_f["player"].isin(season_counts[season_counts >= min_seasons].index)]
+
+    # Re-compute z-scores within this per-window pool, since the consistency filter
+    # changes which players are included. Raw sr and economy from the CSV are the inputs.
+    for season_yr, grp in ar_f.groupby("season"):
+        sr_std  = grp["sr"].std()
+        eco_std = grp["economy"].std()
+        if sr_std == 0 or eco_std == 0:
+            continue
+        ar_f.loc[grp.index, "bat_z"]  = (grp["sr"] - grp["sr"].mean()) / sr_std
+        ar_f.loc[grp.index, "bowl_z"] = -(grp["economy"] - grp["economy"].mean()) / eco_std
+    ar_f["combined_z"] = ar_f["bat_z"] + ar_f["bowl_z"]
 
     # Career averages: mean z-scores across all qualifying seasons in the window
     career = ar_f.groupby("player").agg(
@@ -373,61 +364,64 @@ def update_allrounders(season_data):
     )
     lb_label = f"Combined Impact Leaderboard · Batting z + Bowling z · {min_yr}-{max_yr}"
 
-    # ── Chart C: Per-team allrounder depth ───────────────────────────
-    # Find each allrounder's primary team from DEL (most matches as batter for that team)
-    allrounder_names = career["player"].tolist()
-    del_f = DEL[
-        (DEL["season"] >= min_yr) &
-        (DEL["season"] <= max_yr) &
-        (~DEL["super_over"]) &
-        (~DEL["is_wide"])
-    ]
-    team_counts = (
-        del_f[del_f["batter"].isin(allrounder_names)]
-        .groupby(["batter", "batting_team"])["match_id"]
-        .nunique()
-        .reset_index(name="matches")
-    )
-    primary_team = (
-        team_counts.sort_values("matches", ascending=False)
-        .drop_duplicates("batter")[["batter", "batting_team"]]
-    )
-    primary_team["batting_team"] = primary_team["batting_team"].map(
-        lambda t: _TEAM_SHORT.get(t, t[:4])
-    )
-    depth = (
-        primary_team["batting_team"]
-        .value_counts()
-        .reset_index()
-    )
-    depth.columns = ["team", "count"]
-    depth = depth.sort_values("count", ascending=False).reset_index(drop=True)
+    # ── Chart C: Performance heatmap ─────────────────────────────────
+    # Top 12 allrounders by career combined_z. Each cell shows their combined_z
+    # for that specific season. White = did not qualify that year.
+    top12 = career.nlargest(12, "combined_z")["player"].tolist()
+    seasons_list = sorted(ar_f["season"].unique())
 
-    fig_depth = go.Figure(go.Bar(
-        x=depth["count"],
-        y=depth["team"],
-        orientation="h",
-        marker_color="#3b82f6",
-        marker_line_width=0,
-        width=0.5,
-        text=depth["count"].astype(str),
-        textposition="outside",
-        textfont={"size": 9, "color": "#777", "family": "IBM Plex Mono, monospace"},
-        hovertemplate="<b>%{y}</b><br>Allrounders: %{x}<extra></extra>",
+    pivot = (
+        ar_f[ar_f["player"].isin(top12)]
+        .pivot(index="player", columns="season", values="combined_z")
+        .reindex(index=top12, columns=seasons_list)
+    )
+    pivot.index = [get_full_name(p) for p in pivot.index]
+
+    # Convert NaN to None so Plotly renders missing seasons as true white gaps,
+    # not as the bottom of the colorscale (which float('nan') can cause)
+    z_vals = [
+        [None if (isinstance(v, float) and v != v) else v for v in row]
+        for row in pivot.values.tolist()
+    ]
+
+    fig_depth = go.Figure(go.Heatmap(
+        z=z_vals,
+        x=[str(s) for s in seasons_list],
+        y=pivot.index.tolist(),
+        colorscale=[
+            [0.0, "#fde68a"],  # amber: low z (qualified but below pool average)
+            [0.4, "#86efac"],  # light green: slightly above average
+            [1.0, "#15803d"],  # dark green: elite season
+        ],
+        showscale=False,
+        xgap=2,
+        ygap=2,
+        hoverongaps=False,
+        hovertemplate="<b>%{y}</b> · %{x}<br>Combined z: <b>%{z:.2f}</b><extra></extra>",
     ))
     fig_depth.update_layout(**CHART_THEME)
     fig_depth.update_layout(
+        # plot_bgcolor controls the color of NaN (transparent) cells
+        plot_bgcolor="#e8e8e8",
         yaxis={
             "autorange": "reversed",
+            # tickmode="array" with explicit values forces every name to render,
+            # instead of Plotly auto-skipping labels when rows are close together
             "tickmode": "array",
-            "tickvals": depth["team"].tolist(),
-            "ticktext": depth["team"].tolist(),
+            "tickvals": pivot.index.tolist(),
+            "ticktext": pivot.index.tolist(),
             "tickfont": {"family": "Inter, system-ui, sans-serif", "size": 9},
         },
-        margin={**CHART_THEME["margin"], "l": 55, "r": 40},
-        xaxis={**CHART_THEME["xaxis"], "range": [0, depth["count"].max() * 1.3]},
+        xaxis={
+            "side": "top",
+            "tickfont": {"family": "Inter, system-ui, sans-serif", "size": 9},
+        },
+        margin={**CHART_THEME["margin"], "l": 140, "r": 10, "t": 28, "b": 4},
     )
-    depth_label = f"Allrounder Depth by Franchise · Primary team by matches · {min_yr}-{max_yr}"
+    depth_label = (
+        f"Season Performance Heatmap · Top 12 allrounders by career z-score"
+        f" · White = did not qualify · {min_yr}-{max_yr}"
+    )
 
     # ── Chart D: Season-best allrounder ──────────────────────────────
     # Re-derive from the filtered ar_f so the batting position filter (<=7) applies here too.
