@@ -182,7 +182,7 @@ FULL_NAMES: dict[str, str] = {
     "JJ Bumrah": "Jasprit Bumrah",
     "JJ Roy": "Jason Roy",
     "JM Bairstow": "Jonny Bairstow",
-    "JM Sharma": "Mohit Sharma",
+    "JM Sharma": "Jitesh Sharma",
     "JO Holder": "Jason Holder",
     "JP Behrendorff": "Jason Behrendorff",
     "JP Inglis": "Josh Inglis",
@@ -361,7 +361,7 @@ FULL_NAMES: dict[str, str] = {
     # V
     "V Kaverappa": "Vidwath Kaverappa",
     "V Kohli": "Virat Kohli",
-    "V Nigam": "Vaibhav Nigam",
+    "V Nigam": "Vipraj Nigam",
     "V Puthur": "Vignesh Puthur",
     "V Shankar": "Vijay Shankar",
     "V Suryavanshi": "Vaibhav Suryavanshi",

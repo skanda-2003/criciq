@@ -6,7 +6,6 @@ import plotly.graph_objects as go
 
 from components.metric_card import metric_card
 from components.charts import CHART_THEME
-from data.loader import DEL
 from src.name_map import get_full_name
 
 dash.register_page(__name__, path="/allrounders", name="Allrounders", title="CricIQ - Allrounders")
@@ -14,26 +13,13 @@ dash.register_page(__name__, path="/allrounders", name="Allrounders", title="Cri
 # Pre-computed z-scores; season column lets the callback filter by window
 _IMPACT = pd.read_csv("data/processed/player_impact_season.csv")
 
+# Within-pool allrounder z-scores (batting SR + bowling economy, scored vs allrounder peers only)
+_AR_SCORES = pd.read_csv("data/processed/allrounder_scores.csv")
+
+# Batter phase stats - used to filter by avg batting position (exclude tail-enders from the pool)
+_BAT = pd.read_csv("data/processed/batter_phase_season.csv")
+
 # Canonical short team names for the depth chart
-_TEAM_SHORT = {
-    "Mumbai Indians":              "MI",
-    "Lucknow Super Giants":        "LSG",
-    "Delhi Capitals":              "DC",
-    "Delhi Daredevils":            "DC",
-    "Kolkata Knight Riders":       "KKR",
-    "Sunrisers Hyderabad":         "SRH",
-    "Rajasthan Royals":            "RR",
-    "Punjab Kings":                "PBKS",
-    "Kings XI Punjab":             "PBKS",
-    "Royal Challengers Bengaluru": "RCB",
-    "Royal Challengers Bangalore": "RCB",
-    "Chennai Super Kings":         "CSK",
-    "Gujarat Titans":              "GT",
-    "Rising Pune Supergiant":      "RPS",
-    "Rising Pune Supergiants":     "RPS",
-}
-
-
 def _finding(dot_color, children):
     return html.Div([
         html.Span(style={
@@ -94,25 +80,24 @@ layout = html.Div([
             html.Div([
                 html.Span("Key Findings · 2021-26", className="chart-card__label"),
                 _finding("#3b82f6", [
-                    html.Strong("Only 5 of 119 qualified allrounders sit in the elite quadrant"),
-                    " (positive z-score in both departments, 50+ balls in both). Genuine "
-                    "two-department contributors are the rarest archetype in IPL cricket.",
+                    html.Strong("Only 9 of 43 qualified allrounders sit in the elite quadrant"),
+                    " (above-average in both batting and bowling among allrounder peers). "
+                    "Genuine two-department contributors are the rarest archetype in IPL cricket.",
                 ]),
                 _finding("#22c55e", [
-                    html.Strong("Sunil Narine leads the combined leaderboard (1.07)."),
-                    " His 0.82 bowling z + 0.25 batting z over 5 seasons is the only "
-                    "sustained two-department contribution in this era.",
+                    html.Strong("Sunil Narine leads the combined leaderboard (2.82)."),
+                    " A combined 1.35 batting z + 1.48 bowling z - scored against allrounder "
+                    "peers only - makes him the most complete allrounder in this era.",
                 ]),
                 _finding("#f97316", [
-                    html.Strong("Jasprit Bumrah places 3rd in combined z-score (0.68)"),
-                    " despite near-zero batting. This shows how dominant bowling alone "
-                    "can elevate a combined score - it is not the same as being balanced.",
+                    html.Strong("Hardik Pandya and Andre Russell sit below 0"),
+                    " despite elite batting. Both concede well above the allrounder-pool average, "
+                    "dragging their combined score negative - a fair reflection of their bowling load.",
                 ]),
                 _finding("#ef4444", [
-                    html.Strong("Abhishek Sharma won the season crown two years running (2025-26)."),
-                    " A left-handed opening bat who also bowls left-arm spin, "
-                    "he is one of very few players sustaining elite allrounder status "
-                    "across consecutive seasons.",
+                    html.Strong("Rashid Khan was the season-best allrounder in 2023."),
+                    " His exceptional economy combined with above-average batting for a spinner "
+                    "produced the highest single-season combined z-score (4.14) in the window.",
                 ]),
             ], className="chart-card findings-card"),
             width=4,
@@ -145,44 +130,51 @@ def update_allrounders(season_data):
         else f"Allrounders · {min_yr}-{max_yr}"
     )
 
-    # Filter the pre-computed impact CSV to the selected window.
-    # The CSV only has 2021-26 data, so "all time" still shows 2021-26.
-    # Require 50+ legal balls bowled to qualify as a bowler - this removes
-    # occasional bowlers like TM Head (10 balls) who inflate the allrounder count.
-    del_window = DEL[
-        (DEL["season"] >= min_yr) & (DEL["season"] <= max_yr) &
-        (~DEL["super_over"]) & (~DEL["is_wide"])
-    ]
-    bowl_qualified = set(
-        del_window.groupby("bowler").size()
-        .loc[lambda s: s >= 50]
-        .index
-    )
-    # Batting qualification: 50+ balls faced total in the window.
-    # Without this, pure bowlers with a batting z-score (even from minimal batting)
-    # would appear - Bumrah, Chakravarthy, Markande etc. are not allrounders.
-    bat_qualified = set(
-        del_window[~del_window["is_wide"]]
-        .groupby("batter").size()
-        .loc[lambda s: s >= 50]
-        .index
-    )
-
-    impact_f = _IMPACT[
-        (_IMPACT["season"] >= min_yr) &
-        (_IMPACT["season"] <= max_yr) &
-        (_IMPACT["avg_bowling_z"].notna()) &
-        (_IMPACT["avg_batting_z"].notna()) &
-        (_IMPACT["player"].isin(bowl_qualified)) &
-        (_IMPACT["player"].isin(bat_qualified))
+    # Filter the pre-computed allrounder scores to the selected window.
+    # These z-scores are computed within the allrounder pool only (not against all players),
+    # so Hardik's bowling economy is compared against other allrounders - not Bumrah.
+    ar_f = _AR_SCORES[
+        (_AR_SCORES["season"] >= min_yr) & (_AR_SCORES["season"] <= max_yr)
     ].copy()
 
-    # ── Career averages: mean z-scores across all seasons in the window ──
-    career = impact_f.groupby("player").agg(
-        avg_bat_z =("avg_batting_z", "mean"),
-        avg_bowl_z=("avg_bowling_z", "mean"),
-        seasons   =("season", "nunique"),
-        matches   =("matches_played", "sum"),
+    # Exclude tail-enders: a player who averages batting position > threshold is a bowler
+    # who bats, not a genuine allrounder.
+    # The Impact Player rule (IPL 2023+) means position 8 can be a real batting slot,
+    # so for the modern era window (2021+) the threshold is relaxed to 8.
+    # For all-time analysis it stays at 7.
+    pos_threshold = 8 if min_yr >= 2021 else 7
+    genuine_batters = (
+        _BAT[(_BAT["season"] >= min_yr) & (_BAT["season"] <= max_yr)]
+        .groupby("batter")["avg_batting_position"]
+        .mean()
+        .loc[lambda s: s <= pos_threshold]
+        .index
+    )
+    ar_f = ar_f[ar_f["player"].isin(genuine_batters)]
+
+    # Consistency filter: how many qualifying seasons required depends on the window.
+    # A 6-season modern window needs fewer seasons than an all-time span of 19 seasons.
+    min_seasons = 2 if min_yr >= 2021 else 3
+    season_counts = ar_f.groupby("player")["season"].nunique()
+    ar_f = ar_f[ar_f["player"].isin(season_counts[season_counts >= min_seasons].index)]
+
+    # Re-compute z-scores within this per-window pool, since the consistency filter
+    # changes which players are included. Raw sr and economy from the CSV are the inputs.
+    for season_yr, grp in ar_f.groupby("season"):
+        sr_std  = grp["sr"].std()
+        eco_std = grp["economy"].std()
+        if sr_std == 0 or eco_std == 0:
+            continue
+        ar_f.loc[grp.index, "bat_z"]  = (grp["sr"] - grp["sr"].mean()) / sr_std
+        ar_f.loc[grp.index, "bowl_z"] = -(grp["economy"] - grp["economy"].mean()) / eco_std
+    ar_f["combined_z"] = ar_f["bat_z"] + ar_f["bowl_z"]
+
+    # Career averages: mean z-scores across all qualifying seasons in the window
+    career = ar_f.groupby("player").agg(
+        avg_bat_z =("bat_z",   "mean"),
+        avg_bowl_z=("bowl_z",  "mean"),
+        seasons   =("season",  "nunique"),
+        matches   =("matches", "sum"),
     ).reset_index()
     career["combined_z"]   = career["avg_bat_z"] + career["avg_bowl_z"]
     career["display_name"] = career["player"].map(get_full_name)
@@ -297,8 +289,18 @@ def update_allrounders(season_data):
 
     # ── Metric cards ─────────────────────────────────────────────────
     best_combined_row = career.loc[career["combined_z"].idxmax()]
-    best_bat_row      = career.loc[career["avg_bat_z"].idxmax()]
-    best_bowl_row     = career.loc[career["avg_bowl_z"].idxmax()]
+    # Place the combined leader in their stronger individual card; show the runner-up in the other.
+    # This avoids the same player appearing in both individual cards.
+    combined_player = best_combined_row["player"]
+    others = career[career["player"] != combined_player]
+    if best_combined_row["avg_bowl_z"] >= best_combined_row["avg_bat_z"]:
+        # Bowling is their stronger department - show them in the bowling card
+        best_bowl_row = best_combined_row
+        best_bat_row  = others.loc[others["avg_bat_z"].idxmax()]
+    else:
+        # Batting is their stronger department - show them in the batting card
+        best_bat_row  = best_combined_row
+        best_bowl_row = others.loc[others["avg_bowl_z"].idxmax()]
 
     # Progress bars: combined z is typically < 2.5 at elite level; individual z < 1.5
     p_n     = int(min(n_allrounders / 150 * 100, 100))
@@ -362,72 +364,74 @@ def update_allrounders(season_data):
     )
     lb_label = f"Combined Impact Leaderboard · Batting z + Bowling z · {min_yr}-{max_yr}"
 
-    # ── Chart C: Per-team allrounder depth ───────────────────────────
-    # Find each allrounder's primary team from DEL (most matches as batter for that team)
-    allrounder_names = career["player"].tolist()
-    del_f = DEL[
-        (DEL["season"] >= min_yr) &
-        (DEL["season"] <= max_yr) &
-        (~DEL["super_over"]) &
-        (~DEL["is_wide"])
-    ]
-    team_counts = (
-        del_f[del_f["batter"].isin(allrounder_names)]
-        .groupby(["batter", "batting_team"])["match_id"]
-        .nunique()
-        .reset_index(name="matches")
-    )
-    primary_team = (
-        team_counts.sort_values("matches", ascending=False)
-        .drop_duplicates("batter")[["batter", "batting_team"]]
-    )
-    primary_team["batting_team"] = primary_team["batting_team"].map(
-        lambda t: _TEAM_SHORT.get(t, t[:4])
-    )
-    depth = (
-        primary_team["batting_team"]
-        .value_counts()
-        .reset_index()
-    )
-    depth.columns = ["team", "count"]
-    depth = depth.sort_values("count", ascending=False).reset_index(drop=True)
+    # ── Chart C: Performance heatmap ─────────────────────────────────
+    # Top 12 allrounders by career combined_z. Each cell shows their combined_z
+    # for that specific season. White = did not qualify that year.
+    top12 = career.nlargest(12, "combined_z")["player"].tolist()
+    seasons_list = sorted(ar_f["season"].unique())
 
-    fig_depth = go.Figure(go.Bar(
-        x=depth["count"],
-        y=depth["team"],
-        orientation="h",
-        marker_color="#3b82f6",
-        marker_line_width=0,
-        width=0.5,
-        text=depth["count"].astype(str),
-        textposition="outside",
-        textfont={"size": 9, "color": "#777", "family": "IBM Plex Mono, monospace"},
-        hovertemplate="<b>%{y}</b><br>Allrounders: %{x}<extra></extra>",
+    pivot = (
+        ar_f[ar_f["player"].isin(top12)]
+        .pivot(index="player", columns="season", values="combined_z")
+        .reindex(index=top12, columns=seasons_list)
+    )
+    pivot.index = [get_full_name(p) for p in pivot.index]
+
+    # Convert NaN to None so Plotly renders missing seasons as true white gaps,
+    # not as the bottom of the colorscale (which float('nan') can cause)
+    z_vals = [
+        [None if (isinstance(v, float) and v != v) else v for v in row]
+        for row in pivot.values.tolist()
+    ]
+
+    fig_depth = go.Figure(go.Heatmap(
+        z=z_vals,
+        x=[str(s) for s in seasons_list],
+        y=pivot.index.tolist(),
+        colorscale=[
+            [0.0, "#fde68a"],  # amber: low z (qualified but below pool average)
+            [0.4, "#86efac"],  # light green: slightly above average
+            [1.0, "#15803d"],  # dark green: elite season
+        ],
+        showscale=False,
+        xgap=2,
+        ygap=2,
+        hoverongaps=False,
+        hovertemplate="<b>%{y}</b> · %{x}<br>Combined z: <b>%{z:.2f}</b><extra></extra>",
     ))
     fig_depth.update_layout(**CHART_THEME)
     fig_depth.update_layout(
+        # plot_bgcolor controls the color of NaN (transparent) cells
+        plot_bgcolor="#e8e8e8",
         yaxis={
             "autorange": "reversed",
+            # tickmode="array" with explicit values forces every name to render,
+            # instead of Plotly auto-skipping labels when rows are close together
             "tickmode": "array",
-            "tickvals": depth["team"].tolist(),
-            "ticktext": depth["team"].tolist(),
+            "tickvals": pivot.index.tolist(),
+            "ticktext": pivot.index.tolist(),
             "tickfont": {"family": "Inter, system-ui, sans-serif", "size": 9},
         },
-        margin={**CHART_THEME["margin"], "l": 55, "r": 40},
-        xaxis={**CHART_THEME["xaxis"], "range": [0, depth["count"].max() * 1.3]},
+        xaxis={
+            "side": "top",
+            "tickfont": {"family": "Inter, system-ui, sans-serif", "size": 9},
+        },
+        margin={**CHART_THEME["margin"], "l": 140, "r": 10, "t": 28, "b": 4},
     )
-    depth_label = f"Allrounder Depth by Franchise · Primary team by matches · {min_yr}-{max_yr}"
+    depth_label = (
+        f"Season Performance Heatmap · Top 12 allrounders by career z-score"
+        f" · White = did not qualify · {min_yr}-{max_yr}"
+    )
 
     # ── Chart D: Season-best allrounder ──────────────────────────────
-    impact_f["combined_z"] = impact_f["avg_batting_z"] + impact_f["avg_bowling_z"]
+    # Re-derive from the filtered ar_f so the batting position filter (<=7) applies here too.
+    # Using the pre-computed CSV would include tail-enders who sneak past the z-score threshold.
     season_best = (
-        impact_f.loc[impact_f.groupby("season")["combined_z"].idxmax()]
-        .copy()
+        ar_f.loc[ar_f.groupby("season")["combined_z"].idxmax()]
         .sort_values("season")
         .reset_index(drop=True)
     )
     season_best["display_name"] = season_best["player"].map(get_full_name)
-    # Short label: last name only for bars (keeps chart readable)
     season_best["short_name"] = season_best["display_name"].apply(
         lambda n: n.split()[-1] if " " in n else n
     )

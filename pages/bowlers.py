@@ -6,9 +6,11 @@ import plotly.graph_objects as go
 
 from components.metric_card import metric_card
 from components.charts import CHART_THEME
-from data.loader import DEL
 from src.name_map import get_full_name
-from src.constants import BOWLER_WICKET_KINDS
+
+# Pre-computed in notebooks/09_bowler_season_stats.ipynb
+_BOWL     = pd.read_csv("data/processed/bowler_phase_season.csv")
+_BOWL_WKT = pd.read_csv("data/processed/bowler_wicket_types.csv")
 
 dash.register_page(__name__, path="/bowlers", name="Bowler Analytics", title="CricIQ - Bowler Analytics")
 
@@ -71,7 +73,7 @@ layout = html.Div([
         ),
     ], className="card-row"),
 
-    # Row 3 - wicket type breakdown + key findings
+    # Row 3 - wicket type breakdown + (key findings stacked above season-best bowler)
     dbc.Row([
         dbc.Col(
             html.Div([
@@ -80,7 +82,7 @@ layout = html.Div([
             ], className="chart-card"),
             width=7,
         ),
-        dbc.Col(
+        dbc.Col([
             html.Div([
                 html.Span("Key Findings · 2021-26", className="chart-card__label"),
                 _finding("#3b82f6", [
@@ -106,8 +108,11 @@ layout = html.Div([
                     "wicket-taking style in modern IPL, outpacing both pace and left-arm spin.",
                 ]),
             ], className="chart-card findings-card"),
-            width=5,
-        ),
+            html.Div([
+                html.Span(id="bowler-season-label", className="chart-card__label"),
+                dcc.Graph(id="bowler-season-chart", config={"displayModeBar": False}, style={"height": "200px"}),
+            ], className="chart-card", style={"marginTop": "8px"}),
+        ], width=5),
     ], className="card-row"),
 
     # Row 4 - powerplay economy vs death economy scatter (complete bowler quadrant chart)
@@ -133,8 +138,10 @@ layout = html.Div([
     Output("bowler-pp-label",     "children"),
     Output("bowler-wkt-chart",    "figure"),
     Output("bowler-wkt-label",    "children"),
-    Output("bowler-scatter-chart","figure"),
-    Output("bowler-scatter-label","children"),
+    Output("bowler-scatter-chart", "figure"),
+    Output("bowler-scatter-label", "children"),
+    Output("bowler-season-chart",  "figure"),
+    Output("bowler-season-label",  "children"),
     Input("season-filter", "data"),
 )
 def update_bowler(season_data):
@@ -147,57 +154,41 @@ def update_bowler(season_data):
         else f"Bowler Analytics · {min_yr}-{max_yr}"
     )
 
-    # del_f includes wides - needed for runs conceded (wides count against the bowler's economy)
-    del_f = DEL[
-        (DEL["season"] >= min_yr) &
-        (DEL["season"] <= max_yr) &
-        (~DEL["super_over"])
-    ]
-    # legal excludes wides - used to count balls bowled and wickets
-    legal = del_f[~del_f["is_wide"]]
+    # Filter pre-computed CSV to selected season window
+    bowl_f = _BOWL[(_BOWL["season"] >= min_yr) & (_BOWL["season"] <= max_yr)].copy()
+    wkt_f  = _BOWL_WKT[(_BOWL_WKT["season"] >= min_yr) & (_BOWL_WKT["season"] <= max_yr)].copy()
 
-    # ── Bowling stats: one row per bowler x phase ────────────────────
-    # Balls bowled from legal deliveries; runs from del_f (includes wide extras)
-    bowl_balls = legal.groupby(["bowler", "phase"]).size().reset_index(name="balls_bowled")
-    bowl_runs  = del_f.groupby(["bowler", "phase"])["total_runs"].sum().reset_index(name="runs_conceded")
-    bowl_wkts  = (
-        legal[legal["wicket_kind"].isin(BOWLER_WICKET_KINDS)]
-        .groupby(["bowler", "phase"])
-        .size()
-        .reset_index(name="wickets")
-    )
+    # Career aggregates: sum each bowler's stats across all seasons in the window
+    career = bowl_f.groupby("bowler").agg(
+        total_balls   =("total_balls",   "sum"),
+        total_runs    =("total_runs",    "sum"),
+        total_wickets =("total_wickets", "sum"),
+        pp_balls      =("pp_balls",      "sum"),
+        pp_runs       =("pp_runs",       "sum"),
+        pp_wickets    =("pp_wickets",    "sum"),
+        death_balls   =("death_balls",   "sum"),
+        death_runs    =("death_runs",    "sum"),
+        death_wickets =("death_wickets", "sum"),
+    ).reset_index()
 
-    bowl_phase = (
-        bowl_balls
-        .merge(bowl_runs,  on=["bowler", "phase"], how="left")
-        .merge(bowl_wkts,  on=["bowler", "phase"], how="left")
-    )
-    bowl_phase["wickets"]      = bowl_phase["wickets"].fillna(0).astype(int)
-    bowl_phase["runs_conceded"]= bowl_phase["runs_conceded"].fillna(0)
-    # economy = runs per over (6 balls = 1 over)
-    bowl_phase["economy"] = bowl_phase["runs_conceded"] / (bowl_phase["balls_bowled"] / 6)
+    # Recompute economies from aggregated counts (don't average the per-season economies)
+    career["total_economy"] = career["total_runs"] / (career["total_balls"] / 6)
+    career["pp_economy"]    = career["pp_runs"]    / (career["pp_balls"].replace(0, float("nan"))    / 6)
+    career["death_economy"] = career["death_runs"] / (career["death_balls"].replace(0, float("nan")) / 6)
 
-    # ── Overall wicket totals (all phases, for cards and chart C) ────
-    total_wkts = (
-        legal[legal["wicket_kind"].isin(BOWLER_WICKET_KINDS)]
-        .groupby("bowler")
-        .size()
-        .reset_index(name="wickets")
-        .sort_values("wickets", ascending=False)
-    )
+    # Qualified subsets by phase (50+ career balls in that phase)
+    death_q = career[career["death_balls"] >= 50].copy()
+    pp_q    = career[career["pp_balls"]    >= 50].copy()
 
-    # ── Phase-filtered subsets (50+ balls threshold) ─────────────────
-    death_q = bowl_phase[(bowl_phase["phase"] == "death")     & (bowl_phase["balls_bowled"] >= 50)].copy()
-    pp_q    = bowl_phase[(bowl_phase["phase"] == "powerplay") & (bowl_phase["balls_bowled"] >= 50)].copy()
+    # Overall wickets for ranking (leaderboard uses career total)
+    total_wkts = career[["bowler", "total_wickets"]].rename(columns={"total_wickets": "wickets"}).sort_values("wickets", ascending=False)
 
     # ── Metric cards ─────────────────────────────────────────────────
-    # 1. Total qualified bowlers (50+ legal balls in any phase)
-    total_balls_per_bowler = legal.groupby("bowler").size().reset_index(name="balls_bowled")
-    n_qualified = int((total_balls_per_bowler["balls_bowled"] >= 50).sum())
+    n_qualified = int((career["total_balls"] >= 50).sum())
 
     # 2. Avg league death economy (weighted across all 50+ death qualifiers)
     league_death_econ = (
-        death_q["runs_conceded"].sum() / (death_q["balls_bowled"].sum() / 6)
+        death_q["death_runs"].sum() / (death_q["death_balls"].sum() / 6)
     )
 
     # 3. Highest wicket-taker
@@ -205,13 +196,13 @@ def update_bowler(season_data):
     top_wkt_name = get_full_name(top_wkt_row["bowler"])
 
     # 4. Best death economy (lowest) among 50+ death ball qualifiers
-    best_death_row  = death_q.loc[death_q["economy"].idxmin()]
+    best_death_row  = death_q.loc[death_q["death_economy"].idxmin()]
     best_death_name = get_full_name(best_death_row["bowler"])
 
     p_qualified   = int(min(n_qualified        / 250 * 100, 100))
     p_league_econ = int(min(league_death_econ  / 15  * 100, 100))
     p_top_wkts    = int(min(top_wkt_row["wickets"] / 150 * 100, 100))
-    p_best_econ   = int(min(best_death_row["economy"] / 12 * 100, 100))
+    p_best_econ   = int(min(best_death_row["death_economy"] / 12 * 100, 100))
 
     metrics = [
         dbc.Col(metric_card(
@@ -234,7 +225,7 @@ def update_bowler(season_data):
         ), width=3),
         dbc.Col(metric_card(
             "Best Death Economy",
-            f"{best_death_row['economy']:.2f}",
+            f"{best_death_row['death_economy']:.2f}",
             secondary=f" · {best_death_name}",
             progress=p_best_econ, color="orange",
         ), width=3),
@@ -242,17 +233,17 @@ def update_bowler(season_data):
 
     # ── Chart A: Death economy specialists ───────────────────────────
     # Lower economy = better; sort ascending so best (lowest) appears at top
-    death_top = death_q.sort_values("economy", ascending=True).head(10).reset_index(drop=True)
+    death_top = death_q.sort_values("death_economy", ascending=True).head(10).reset_index(drop=True)
     death_top["display_name"] = death_top["bowler"].map(get_full_name)
 
     fig_death = go.Figure(go.Bar(
-        x=death_top["economy"],
+        x=death_top["death_economy"],
         y=death_top["display_name"],
         orientation="h",
         marker_color="#f97316",
         marker_line_width=0,
         width=0.5,
-        text=[f"{e:.2f}  ({b}b)" for e, b in zip(death_top["economy"], death_top["balls_bowled"])],
+        text=[f"{e:.2f}  ({b:.0f}b)" for e, b in zip(death_top["death_economy"], death_top["death_balls"])],
         textposition="outside",
         textfont={"size": 9, "color": "#777", "family": "IBM Plex Mono, monospace"},
         hovertemplate="<b>%{y}</b><br>Death Economy: %{x:.2f}<extra></extra>",
@@ -268,7 +259,6 @@ def update_bowler(season_data):
             "tickfont": {"family": "Inter, system-ui, sans-serif", "size": 9},
         },
         margin={**CHART_THEME["margin"], "l": 130, "r": 110},
-        # x-axis range: starts at 0 and extends past the league avg line for context
         xaxis={**CHART_THEME["xaxis"], "range": [0, league_death_econ * 1.25]},
     )
     death_label = (
@@ -277,20 +267,20 @@ def update_bowler(season_data):
     )
 
     # ── Chart B: Powerplay wicket specialists ────────────────────────
-    pp_top = pp_q.sort_values("wickets", ascending=False).head(10).reset_index(drop=True)
+    pp_top = pp_q.sort_values("pp_wickets", ascending=False).head(10).reset_index(drop=True)
     pp_top["display_name"] = pp_top["bowler"].map(get_full_name)
 
     fig_pp = go.Figure(go.Bar(
-        x=pp_top["wickets"],
+        x=pp_top["pp_wickets"],
         y=pp_top["display_name"],
         orientation="h",
         marker_color="#3b82f6",
         marker_line_width=0,
         width=0.5,
-        text=[f"{w}  ({b}b)" for w, b in zip(pp_top["wickets"], pp_top["balls_bowled"])],
+        text=[f"{w:.0f}  ({b:.0f}b)" for w, b in zip(pp_top["pp_wickets"], pp_top["pp_balls"])],
         textposition="outside",
         textfont={"size": 9, "color": "#777", "family": "IBM Plex Mono, monospace"},
-        hovertemplate="<b>%{y}</b><br>PP Wickets: %{x}<extra></extra>",
+        hovertemplate="<b>%{y}</b><br>PP Wickets: %{x:.0f}<extra></extra>",
     ))
     fig_pp.update_layout(**CHART_THEME)
     fig_pp.update_layout(
@@ -302,39 +292,37 @@ def update_bowler(season_data):
             "tickfont": {"family": "Inter, system-ui, sans-serif", "size": 9},
         },
         margin={**CHART_THEME["margin"], "l": 130, "r": 60},
-        xaxis={**CHART_THEME["xaxis"], "range": [0, pp_top["wickets"].max() * 1.35]},
+        xaxis={**CHART_THEME["xaxis"], "range": [0, pp_top["pp_wickets"].max() * 1.35]},
     )
     pp_label = "Powerplay Wicket Specialists · Wickets in Overs 1-6 · 50+ balls bowled"
 
     # ── Chart C: Wicket type breakdown ───────────────────────────────
-    # Top 15 overall wicket-takers; stacked percentage bar by dismissal type
+    # Top 15 overall wicket-takers; stacked percentage bar by dismissal type.
+    # wkt_f has been filtered to the selected season window.
     top15_bowlers = total_wkts.head(15)["bowler"].tolist()
-    wkt_del = legal[
-        legal["bowler"].isin(top15_bowlers) &
-        legal["wicket_kind"].isin(BOWLER_WICKET_KINDS)
-    ].copy()
-    wkt_del["category"] = wkt_del["wicket_kind"].map(_categorize_wicket)
 
-    # Pivot to wide format: one row per bowler, one column per category (raw counts)
-    wkt_counts = (
-        wkt_del.groupby(["bowler", "category"])
-        .size()
+    # Sum counts across seasons for top 15
+    wkt_agg = (
+        wkt_f[wkt_f["bowler"].isin(top15_bowlers)]
+        .groupby(["bowler", "wicket_category"])["count"]
+        .sum()
         .unstack(fill_value=0)
         .reset_index()
     )
-    for cat in _WICKET_CATS:
-        if cat not in wkt_counts.columns:
-            wkt_counts[cat] = 0
+    # The notebook uses three categories: bowled_lbw, caught, other
+    # Map to the five-category system the chart expects
+    wkt_agg["bowled"]  = wkt_agg.get("bowled_lbw", 0)
+    wkt_agg["lbw"]     = 0   # merged into bowled_lbw in notebook; keep 0 here
+    wkt_agg["caught"]  = wkt_agg.get("caught",     0)
+    wkt_agg["stumped"] = 0
+    wkt_agg["other"]   = wkt_agg.get("other",      0)
 
-    # Convert raw counts to percentages so all bars share the same 0-100 scale
-    wkt_counts["total"] = wkt_counts[_WICKET_CATS].sum(axis=1)
+    wkt_agg["total"] = wkt_agg[_WICKET_CATS].sum(axis=1)
+    wkt_counts = wkt_agg.copy()
     for cat in _WICKET_CATS:
         wkt_counts[f"{cat}_pct"] = wkt_counts[cat] / wkt_counts["total"] * 100
 
-    # Merge total wicket count back in to use for sorting and labeling
-    wkt_counts = wkt_counts.merge(
-        total_wkts[["bowler", "wickets"]], on="bowler", how="left"
-    )
+    wkt_counts = wkt_counts.merge(total_wkts[["bowler", "wickets"]], on="bowler", how="left")
     wkt_counts = wkt_counts.sort_values("wickets", ascending=False).reset_index(drop=True)
     wkt_counts["display_name"] = wkt_counts["bowler"].map(get_full_name)
 
@@ -397,31 +385,12 @@ def update_bowler(season_data):
     wkt_label = f"Wicket Type Breakdown · Top 15 Wicket-Takers · {min_yr}-{max_yr}"
 
     # ── Chart D: PP economy vs death economy scatter ──────────────────
-    # Only bowlers with 50+ legal balls in BOTH phases qualify.
-    # Lower economy = better in both axes, so "Complete Bowler" is bottom-left.
-    # Analogue of the complete batsmen scatter on the batters page.
-    pp_legal   = legal[legal["phase"] == "powerplay"]
-    death_legal = legal[legal["phase"] == "death"]
-
-    pp_balls   = pp_legal.groupby("bowler").size().rename("pp_balls")
-    death_balls = death_legal.groupby("bowler").size().rename("death_balls")
-
-    pp_all   = del_f[del_f["phase"] == "powerplay"]
-    death_all = del_f[del_f["phase"] == "death"]
-
-    pp_runs   = pp_all.groupby("bowler")["total_runs"].sum().rename("pp_runs")
-    death_runs = death_all.groupby("bowler")["total_runs"].sum().rename("death_runs")
-
-    scatter_df = (
-        pd.concat([pp_balls, death_balls, pp_runs, death_runs], axis=1)
-        .dropna()
-        .query("pp_balls >= 50 and death_balls >= 50")
-        .copy()
-    )
-    scatter_df["pp_econ"]    = scatter_df["pp_runs"]    / (scatter_df["pp_balls"]    / 6)
-    scatter_df["death_econ"] = scatter_df["death_runs"] / (scatter_df["death_balls"] / 6)
-    scatter_df.index.name    = "bowler"
-    scatter_df                = scatter_df.reset_index()
+    # career already has pp_economy and death_economy from aggregated career totals.
+    scatter_df = career[
+        (career["pp_balls"] >= 50) & (career["death_balls"] >= 50)
+    ].copy()
+    scatter_df["pp_econ"]    = scatter_df["pp_economy"]
+    scatter_df["death_econ"] = scatter_df["death_economy"]
     scatter_df["display_name"] = scatter_df["bowler"].map(get_full_name)
 
     # Quadrant midpoints for reference lines
@@ -503,10 +472,50 @@ def update_bowler(season_data):
         f" · capped at PP≤10 / Death≤12"
     )
 
+    # ── Chart E: Season-best bowler ──────────────────────────────────
+    # bowl_f has one row per bowler per season with total_balls and total_wickets.
+    # Pick the highest wicket-taker per season among 50+ ball qualifiers.
+    season_best = (
+        bowl_f[bowl_f["total_balls"] >= 50]
+        .loc[lambda df: df.groupby("season")["total_wickets"].idxmax()]
+        .sort_values("season")
+        .reset_index(drop=True)
+    )
+    season_best["display_name"] = season_best["bowler"].map(get_full_name)
+    season_best["short_name"] = season_best["display_name"].apply(
+        lambda n: n.split()[-1] if " " in n else n
+    )
+    season_best["season_str"] = season_best["season"].astype(int).astype(str)
+
+    fig_season = go.Figure(go.Bar(
+        x=season_best["season_str"],
+        y=season_best["total_wickets"],
+        marker_color="#22c55e",
+        marker_line_width=0,
+        width=0.5,
+        text=season_best["short_name"],
+        textposition="outside",
+        textfont={"size": 9, "color": "#888", "family": "IBM Plex Mono, monospace"},
+        customdata=season_best[["display_name", "total_wickets", "total_balls"]].values,
+        hovertemplate=(
+            "<b>%{customdata[0]}</b><br>"
+            "Wickets: <b>%{customdata[1]}</b>  (%{customdata[2]:.0f} balls)"
+            "<extra></extra>"
+        ),
+    ))
+    fig_season.update_layout(**CHART_THEME)
+    fig_season.update_layout(
+        xaxis={**CHART_THEME["xaxis"], "tickfont": {"family": "Inter, system-ui, sans-serif", "size": 9}},
+        yaxis={**CHART_THEME["yaxis"], "visible": False},
+        margin={**CHART_THEME["margin"], "t": 25},
+    )
+    season_label = f"Season-Best Bowler · Most Wickets per Season · {min_yr}-{max_yr}"
+
     return (
         title, metrics,
         fig_death, death_label,
         fig_pp,    pp_label,
         fig_wkt,   wkt_label,
         fig_scatter, scatter_label,
+        fig_season, season_label,
     )
