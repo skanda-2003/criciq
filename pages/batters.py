@@ -87,7 +87,25 @@ layout = html.Div([
         ),
     ], className="card-row"),
 
-    # Row 4 - complete batsmen scatter (flagship chart, full width)
+    # Row 4 - season leaders: most runs (volume) + best RAPA (efficiency above phase avg)
+    dbc.Row([
+        dbc.Col(
+            html.Div([
+                html.Span(id="batting-runs-label", className="chart-card__label"),
+                dcc.Graph(id="batting-runs-chart", config={"displayModeBar": False}, style={"height": "210px"}),
+            ], className="chart-card"),
+            width=6,
+        ),
+        dbc.Col(
+            html.Div([
+                html.Span(id="batting-rapa-label", className="chart-card__label"),
+                dcc.Graph(id="batting-rapa-chart", config={"displayModeBar": False}, style={"height": "210px"}),
+            ], className="chart-card"),
+            width=6,
+        ),
+    ], className="card-row"),
+
+    # Row 5 - complete batsmen scatter (flagship chart, full width)
     dbc.Row([
         dbc.Col(
             html.Div([
@@ -112,6 +130,10 @@ layout = html.Div([
     Output("batting-death-label",   "children"),
     Output("batting-scatter-chart", "figure"),
     Output("batting-scatter-label", "children"),
+    Output("batting-runs-chart",    "figure"),
+    Output("batting-runs-label",    "children"),
+    Output("batting-rapa-chart",    "figure"),
+    Output("batting-rapa-label",    "children"),
     Input("season-filter", "data"),
 )
 def update_batting(season_data):
@@ -431,10 +453,117 @@ def update_batting(season_data):
         f" · PP SR<120 or Death SR<140 not shown"
     )
 
+    # ── Chart E: Season runs leader (volume) ─────────────────────────
+    # Most runs scored in a season - 50+ balls to qualify.
+    # Answers: who was the run machine? (Kohli 2016, Gill 2023, Buttler 2022)
+    season_runs = legal.groupby(["season", "batter"]).agg(
+        total_runs=("batter_runs", "sum"),
+        total_balls=("batter_runs", "count"),
+    ).reset_index().query("total_balls >= 50")
+
+    runs_best = (
+        season_runs
+        .loc[season_runs.groupby("season")["total_runs"].idxmax()]
+        .sort_values("season")
+        .reset_index(drop=True)
+    )
+    runs_best["display_name"] = runs_best["batter"].map(get_full_name)
+    runs_best["short_name"] = runs_best["display_name"].apply(
+        lambda n: n.split()[-1] if " " in n else n
+    )
+    runs_best["season_str"] = runs_best["season"].astype(int).astype(str)
+
+    fig_runs = go.Figure(go.Bar(
+        x=runs_best["season_str"],
+        y=runs_best["total_runs"],
+        marker_color="#3b82f6",
+        marker_line_width=0,
+        width=0.5,
+        text=runs_best["short_name"],
+        textposition="outside",
+        textfont={"size": 9, "color": "#888", "family": "IBM Plex Mono, monospace"},
+        customdata=runs_best[["display_name", "total_runs", "total_balls"]].values,
+        hovertemplate=(
+            "<b>%{customdata[0]}</b><br>"
+            "Runs: <b>%{customdata[1]:.0f}</b>  (%{customdata[2]:.0f} balls)"
+            "<extra></extra>"
+        ),
+    ))
+    fig_runs.update_layout(**CHART_THEME)
+    fig_runs.update_layout(
+        xaxis={**CHART_THEME["xaxis"], "tickfont": {"family": "Inter, system-ui, sans-serif", "size": 9}},
+        yaxis={**CHART_THEME["yaxis"], "visible": False},
+        margin={**CHART_THEME["margin"], "t": 25},
+    )
+    runs_label = f"Season Runs Leader · Most Runs per Season · {min_yr}-{max_yr}"
+
+    # ── Chart F: Season efficiency leader (RAPA) ──────────────────────
+    # Runs Above Phase Average: extra runs scored vs what an avg batter would score
+    # in the same balls and phases. Accounts for positional expectations - a finisher
+    # must beat the death-phase baseline of ~171 SR, not the overall ~140 average.
+    # Answers: who dominated relative to their role context? (ABD 2016, Suryavanshi)
+    phase_avgs = legal.groupby(["season", "phase"]).agg(
+        total_runs=("batter_runs", "sum"),
+        total_balls=("batter_runs", "count"),
+    ).reset_index()
+    phase_avgs["league_sr"] = phase_avgs["total_runs"] / phase_avgs["total_balls"] * 100
+
+    batter_phase = legal.groupby(["season", "batter", "phase"]).agg(
+        runs=("batter_runs", "sum"),
+        balls=("batter_runs", "count"),
+    ).reset_index()
+    batter_phase = batter_phase.merge(phase_avgs[["season", "phase", "league_sr"]], on=["season", "phase"])
+    batter_phase["rapa"] = batter_phase["runs"] - (batter_phase["league_sr"] / 100 * batter_phase["balls"])
+
+    season_rapa = batter_phase.groupby(["season", "batter"]).agg(
+        rapa=("rapa", "sum"),
+        total_runs=("runs", "sum"),
+        total_balls=("balls", "sum"),
+    ).reset_index().query("total_balls >= 50")
+
+    rapa_best = (
+        season_rapa
+        .loc[season_rapa.groupby("season")["rapa"].idxmax()]
+        .sort_values("season")
+        .reset_index(drop=True)
+    )
+    rapa_best["display_name"] = rapa_best["batter"].map(get_full_name)
+    rapa_best["short_name"] = rapa_best["display_name"].apply(
+        lambda n: n.split()[-1] if " " in n else n
+    )
+    rapa_best["season_str"] = rapa_best["season"].astype(int).astype(str)
+
+    fig_rapa = go.Figure(go.Bar(
+        x=rapa_best["season_str"],
+        y=rapa_best["rapa"].round(1),
+        marker_color="#22c55e",
+        marker_line_width=0,
+        width=0.5,
+        text=rapa_best["short_name"],
+        textposition="outside",
+        textfont={"size": 9, "color": "#888", "family": "IBM Plex Mono, monospace"},
+        customdata=rapa_best[["display_name", "rapa", "total_runs", "total_balls"]].values,
+        hovertemplate=(
+            "<b>%{customdata[0]}</b><br>"
+            "Runs above avg: <b>%{customdata[1]:.0f}</b><br>"
+            "Runs: <b>%{customdata[2]:.0f}</b>  (%{customdata[3]:.0f} balls)"
+            "<extra></extra>"
+        ),
+    ))
+    fig_rapa.update_layout(**CHART_THEME)
+    fig_rapa.update_layout(
+        xaxis={**CHART_THEME["xaxis"], "tickfont": {"family": "Inter, system-ui, sans-serif", "size": 9}},
+        yaxis={**CHART_THEME["yaxis"], "visible": False},
+        margin={**CHART_THEME["margin"], "t": 25},
+    )
+    rapa_label = f"Season Efficiency Leader · Runs Above Phase Average · {min_yr}-{max_yr}"
+
     return (
         title, metrics,
         fig_pp,     pp_label,
         fig_mid,    mid_label,
         fig_death,  death_label,
         fig_scatter, scatter_label,
+        fig_runs,   runs_label,
+        fig_rapa,   rapa_label,
     )

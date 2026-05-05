@@ -308,7 +308,7 @@ def update_overview(season_data):
             "tickfont": {"family": "Inter, system-ui, sans-serif", "size": 9},
         },
         margin={**CHART_THEME["margin"], "l": 130, "r": 90},
-        xaxis={**CHART_THEME["xaxis"], "range": [0, 280]},
+        xaxis={**CHART_THEME["xaxis"], "range": [100, 280]},
     )
 
     death_label = f"Death Specialists · SR in Overs 16-20 · Dashed = league avg {league_sr:.0f}"

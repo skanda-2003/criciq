@@ -71,7 +71,7 @@ layout = html.Div([
         ),
     ], className="card-row"),
 
-    # Row 3 - wicket type breakdown + key findings
+    # Row 3 - wicket type breakdown + (key findings stacked above season-best bowler)
     dbc.Row([
         dbc.Col(
             html.Div([
@@ -80,7 +80,7 @@ layout = html.Div([
             ], className="chart-card"),
             width=7,
         ),
-        dbc.Col(
+        dbc.Col([
             html.Div([
                 html.Span("Key Findings · 2021-26", className="chart-card__label"),
                 _finding("#3b82f6", [
@@ -106,8 +106,11 @@ layout = html.Div([
                     "wicket-taking style in modern IPL, outpacing both pace and left-arm spin.",
                 ]),
             ], className="chart-card findings-card"),
-            width=5,
-        ),
+            html.Div([
+                html.Span(id="bowler-season-label", className="chart-card__label"),
+                dcc.Graph(id="bowler-season-chart", config={"displayModeBar": False}, style={"height": "200px"}),
+            ], className="chart-card", style={"marginTop": "8px"}),
+        ], width=5),
     ], className="card-row"),
 
     # Row 4 - powerplay economy vs death economy scatter (complete bowler quadrant chart)
@@ -133,8 +136,10 @@ layout = html.Div([
     Output("bowler-pp-label",     "children"),
     Output("bowler-wkt-chart",    "figure"),
     Output("bowler-wkt-label",    "children"),
-    Output("bowler-scatter-chart","figure"),
-    Output("bowler-scatter-label","children"),
+    Output("bowler-scatter-chart", "figure"),
+    Output("bowler-scatter-label", "children"),
+    Output("bowler-season-chart",  "figure"),
+    Output("bowler-season-label",  "children"),
     Input("season-filter", "data"),
 )
 def update_bowler(season_data):
@@ -503,10 +508,66 @@ def update_bowler(season_data):
         f" · capped at PP≤10 / Death≤12"
     )
 
+    # ── Chart E: Season-best bowler ──────────────────────────────────
+    # Rank by wickets z-score so the "best" is relative to that season's field,
+    # not absolute wicket counts (which vary with number of matches played per season).
+    season_balls = legal.groupby(["season", "bowler"]).size().reset_index(name="balls_bowled")
+    season_wkts_df = (
+        legal[legal["wicket_kind"].isin(BOWLER_WICKET_KINDS)]
+        .groupby(["season", "bowler"])
+        .size()
+        .reset_index(name="wickets")
+    )
+    season_bowl = season_balls.merge(season_wkts_df, on=["season", "bowler"], how="left")
+    season_bowl["wickets"] = season_bowl["wickets"].fillna(0).astype(int)
+    season_bowl_q = season_bowl[season_bowl["balls_bowled"] >= 50].copy()
+    # Within each season, standardise wicket counts across all 50+ ball qualifiers
+    season_bowl_q["wkt_z"] = season_bowl_q.groupby("season")["wickets"].transform(
+        lambda x: (x - x.mean()) / x.std() if x.std() > 0 else 0.0
+    )
+
+    season_best = (
+        season_bowl_q
+        .loc[season_bowl_q.groupby("season")["wkt_z"].idxmax()]
+        .sort_values("season")
+        .reset_index(drop=True)
+    )
+    season_best["display_name"] = season_best["bowler"].map(get_full_name)
+    season_best["short_name"] = season_best["display_name"].apply(
+        lambda n: n.split()[-1] if " " in n else n
+    )
+    season_best["season_str"] = season_best["season"].astype(int).astype(str)
+
+    fig_season = go.Figure(go.Bar(
+        x=season_best["season_str"],
+        y=season_best["wkt_z"],
+        marker_color="#22c55e",
+        marker_line_width=0,
+        width=0.5,
+        text=season_best["short_name"],
+        textposition="outside",
+        textfont={"size": 9, "color": "#888", "family": "IBM Plex Mono, monospace"},
+        customdata=season_best[["display_name", "wkt_z", "wickets", "balls_bowled"]].values,
+        hovertemplate=(
+            "<b>%{customdata[0]}</b><br>"
+            "Wickets z-score: <b>%{customdata[1]:.2f}</b><br>"
+            "Wickets: <b>%{customdata[2]}</b>  (%{customdata[3]:.0f} balls)"
+            "<extra></extra>"
+        ),
+    ))
+    fig_season.update_layout(**CHART_THEME)
+    fig_season.update_layout(
+        xaxis={**CHART_THEME["xaxis"], "tickfont": {"family": "Inter, system-ui, sans-serif", "size": 9}},
+        yaxis={**CHART_THEME["yaxis"], "visible": False},
+        margin={**CHART_THEME["margin"], "t": 25},
+    )
+    season_label = f"Season-Best Bowler · Highest Wickets z-score per Season · {min_yr}-{max_yr}"
+
     return (
         title, metrics,
         fig_death, death_label,
         fig_pp,    pp_label,
         fig_wkt,   wkt_label,
         fig_scatter, scatter_label,
+        fig_season, season_label,
     )

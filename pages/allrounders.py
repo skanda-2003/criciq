@@ -419,14 +419,54 @@ def update_allrounders(season_data):
     depth_label = f"Allrounder Depth by Franchise · Primary team by matches · {min_yr}-{max_yr}"
 
     # ── Chart D: Season-best allrounder ──────────────────────────────
-    impact_f["combined_z"] = impact_f["avg_batting_z"] + impact_f["avg_bowling_z"]
-    season_best = (
-        impact_f.loc[impact_f.groupby("season")["combined_z"].idxmax()]
+    # _IMPACT only covers 2021-26, so using it locked this chart to that window even when
+    # "All Time" was selected. Instead, compute batting SR z-score and bowling economy
+    # z-score from raw DEL so the chart responds correctly for all season windows.
+
+    # Batting: SR per player per season (50+ balls faced)
+    # del_window already excludes wides and super overs
+    bat_by_season = del_window.groupby(["season", "batter"]).agg(
+        runs=("batter_runs", "sum"),
+        balls=("batter_runs", "count"),
+    ).reset_index().query("balls >= 50").copy()
+    bat_by_season["sr"] = bat_by_season["runs"] / bat_by_season["balls"] * 100
+    bat_by_season["bat_z"] = bat_by_season.groupby("season")["sr"].transform(
+        lambda x: (x - x.mean()) / x.std() if x.std() > 0 else 0.0
+    )
+
+    # Bowling: economy per bowler per season (50+ legal balls bowled)
+    # Need wides included in runs conceded - re-derive without the wide filter
+    bowl_del = DEL[
+        (DEL["season"] >= min_yr) & (DEL["season"] <= max_yr) & (~DEL["super_over"])
+    ]
+    legal_bowl = bowl_del[~bowl_del["is_wide"]]
+    bowl_balls_s = legal_bowl.groupby(["season", "bowler"]).size().reset_index(name="balls_bowled")
+    bowl_runs_s  = bowl_del.groupby(["season", "bowler"])["total_runs"].sum().reset_index(name="runs_conceded")
+    bowl_by_season = bowl_balls_s.merge(bowl_runs_s, on=["season", "bowler"]).query("balls_bowled >= 50").copy()
+    bowl_by_season["econ"] = bowl_by_season["runs_conceded"] / (bowl_by_season["balls_bowled"] / 6)
+    # Negate: lower economy is better, so the elite bowler gets a positive z-score
+    bowl_by_season["bowl_z"] = bowl_by_season.groupby("season")["econ"].transform(
+        lambda x: -(x - x.mean()) / x.std() if x.std() > 0 else 0.0
+    )
+
+    # Merge: only players who qualify in both batting (50+ balls faced) and bowling (50+ balls bowled)
+    ar_z = (
+        bat_by_season[["season", "batter", "bat_z"]]
+        .merge(
+            bowl_by_season[["season", "bowler", "bowl_z"]].rename(columns={"bowler": "batter"}),
+            on=["season", "batter"],
+            how="inner",
+        )
         .copy()
+    )
+    ar_z["combined_z"] = ar_z["bat_z"] + ar_z["bowl_z"]
+
+    season_best = (
+        ar_z.loc[ar_z.groupby("season")["combined_z"].idxmax()]
         .sort_values("season")
         .reset_index(drop=True)
     )
-    season_best["display_name"] = season_best["player"].map(get_full_name)
+    season_best["display_name"] = season_best["batter"].map(get_full_name)
     # Short label: last name only for bars (keeps chart readable)
     season_best["short_name"] = season_best["display_name"].apply(
         lambda n: n.split()[-1] if " " in n else n
