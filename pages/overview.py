@@ -8,7 +8,10 @@ from components.metric_card import metric_card
 from components.charts import phase_stacked_bar, CHART_THEME
 from data.loader import DEL, MAT
 from src.name_map import get_full_name
-from src.constants import BOWLER_WICKET_KINDS
+
+# Pre-computed in notebooks/08 and 09 - used for death specialists, top scorers, top wicket-takers
+_BAT  = pd.read_csv("data/processed/batter_phase_season.csv")
+_BOWL = pd.read_csv("data/processed/bowler_phase_season.csv")
 
 dash.register_page(__name__, path="/", name="Overview", title="CricIQ - Overview")
 
@@ -250,28 +253,24 @@ def update_overview(season_data):
     )
 
     # ── Death specialists ─────────────────────────────────────────────
-    # Computed from DEL directly so it responds to the season filter.
-    # Wide deliveries are excluded: they don't count as balls faced by the batter.
-    legal_death = del_f[
-        (del_f["phase"] == "death") & (~del_f["is_wide"])
-    ]
+    # Use pre-computed batter_phase_season.csv so no DEL scan needed.
+    bat_f = _BAT[(_BAT["season"] >= min_yr) & (_BAT["season"] <= max_yr)].copy()
 
-    death_stats = legal_death.groupby("batter").agg(
-        balls_faced=("batter_runs", "count"),
-        runs_scored=("batter_runs", "sum"),
+    # Career totals per batter across the season window
+    death_career = bat_f.groupby("batter").agg(
+        balls_faced       =("death_balls",          "sum"),
+        runs_scored       =("death_runs",            "sum"),
+        avg_batting_position=("avg_batting_position","mean"),
     ).reset_index()
-    death_stats["strike_rate"] = death_stats["runs_scored"] / death_stats["balls_faced"] * 100
-
-    avg_pos = (
-        legal_death.groupby("batter")["batting_position"]
-        .mean()
-        .reset_index()
-        .rename(columns={"batting_position": "avg_position"})
+    death_career["strike_rate"] = (
+        death_career["runs_scored"] / death_career["balls_faced"] * 100
     )
-    death_stats = death_stats.merge(avg_pos, on="batter", how="left")
 
     specialists = (
-        death_stats[(death_stats["balls_faced"] >= 50) & (death_stats["avg_position"] > 5)]
+        death_career[
+            (death_career["balls_faced"] >= 50) &
+            (death_career["avg_batting_position"] > 5)
+        ]
         .sort_values("strike_rate", ascending=False)
         .head(10)
         .reset_index(drop=True)
@@ -279,7 +278,7 @@ def update_overview(season_data):
     specialists["display_name"] = specialists["batter"].map(get_full_name)
 
     # League avg SR: weighted across all 50+ ball qualifiers (not just top 10)
-    qualified = death_stats[death_stats["balls_faced"] >= 50]
+    qualified = death_career[death_career["balls_faced"] >= 50]
     league_sr = qualified["runs_scored"].sum() / qualified["balls_faced"].sum() * 100
 
     fig_death = go.Figure(go.Bar(
@@ -314,11 +313,9 @@ def update_overview(season_data):
     death_label = f"Death Specialists · SR in Overs 16-20 · Dashed = league avg {league_sr:.0f}"
 
     # ── Top 5 run-scorers ─────────────────────────────────────────────
-    # Wides don't count as balls faced by the batter, so exclude them
-    # to avoid crediting extras as batter runs (they're already 0 in batter_runs, but be explicit).
+    # bat_f is already filtered to the season window above
     top_scorers = (
-        del_f[~del_f["is_wide"]]
-        .groupby("batter")["batter_runs"]
+        bat_f.groupby("batter")["total_runs"]
         .sum()
         .reset_index(name="runs")
         .sort_values("runs", ascending=False)
@@ -354,12 +351,12 @@ def update_overview(season_data):
     batters_label = f"Top 5 Run-Scorers · {min_yr}-{max_yr}"
 
     # ── Top 5 wicket-takers ───────────────────────────────────────────
-    # Only count wickets where the bowler is credited: caught, bowled, lbw, etc.
-    # Run outs, retired hurt, and obstructing the field are NOT the bowler's wicket.
+    # Only bowler-credited wickets (caught, bowled, lbw, stumped, hit wicket)
+    # are stored in bowler_phase_season.csv - run-outs are already excluded.
+    bowl_f = _BOWL[(_BOWL["season"] >= min_yr) & (_BOWL["season"] <= max_yr)]
     top_wickets = (
-        del_f[del_f["wicket_kind"].isin(BOWLER_WICKET_KINDS)]
-        .groupby("bowler")
-        .size()
+        bowl_f.groupby("bowler")["total_wickets"]
+        .sum()
         .reset_index(name="wickets")
         .sort_values("wickets", ascending=False)
         .head(5)

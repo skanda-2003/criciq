@@ -17,6 +17,9 @@ _IMPACT = pd.read_csv("data/processed/player_impact_season.csv")
 # Within-pool allrounder z-scores (batting SR + bowling economy, scored vs allrounder peers only)
 _AR_SCORES = pd.read_csv("data/processed/allrounder_scores.csv")
 
+# Batter phase stats - used to filter by avg batting position (exclude tail-enders from the pool)
+_BAT = pd.read_csv("data/processed/batter_phase_season.csv")
+
 # Canonical short team names for the depth chart
 _TEAM_SHORT = {
     "Mumbai Indians":              "MI",
@@ -147,7 +150,7 @@ def update_allrounders(season_data):
         else f"Allrounders · {min_yr}-{max_yr}"
     )
 
-    # del_window is still needed for Chart C (team lookup) and Chart D (season-best)
+    # del_window is needed for Chart C (primary team lookup per allrounder)
     del_window = DEL[
         (DEL["season"] >= min_yr) & (DEL["season"] <= max_yr) &
         (~DEL["super_over"]) & (~DEL["is_wide"])
@@ -159,6 +162,21 @@ def update_allrounders(season_data):
     ar_f = _AR_SCORES[
         (_AR_SCORES["season"] >= min_yr) & (_AR_SCORES["season"] <= max_yr)
     ].copy()
+
+    # Exclude tail-enders: a player who averages batting position > threshold is a bowler
+    # who bats, not a genuine allrounder.
+    # The Impact Player rule (IPL 2023+) means position 8 can be a real batting slot,
+    # so for the modern era window (2021+) the threshold is relaxed to 8.
+    # For all-time analysis it stays at 7.
+    pos_threshold = 8 if min_yr >= 2021 else 7
+    genuine_batters = (
+        _BAT[(_BAT["season"] >= min_yr) & (_BAT["season"] <= max_yr)]
+        .groupby("batter")["avg_batting_position"]
+        .mean()
+        .loc[lambda s: s <= pos_threshold]
+        .index
+    )
+    ar_f = ar_f[ar_f["player"].isin(genuine_batters)]
 
     # Career averages: mean z-scores across all qualifying seasons in the window
     career = ar_f.groupby("player").agg(
@@ -412,55 +430,14 @@ def update_allrounders(season_data):
     depth_label = f"Allrounder Depth by Franchise · Primary team by matches · {min_yr}-{max_yr}"
 
     # ── Chart D: Season-best allrounder ──────────────────────────────
-    # _IMPACT only covers 2021-26, so using it locked this chart to that window even when
-    # "All Time" was selected. Instead, compute batting SR z-score and bowling economy
-    # z-score from raw DEL so the chart responds correctly for all season windows.
-
-    # Batting: SR per player per season (50+ balls faced)
-    # del_window already excludes wides and super overs
-    bat_by_season = del_window.groupby(["season", "batter"]).agg(
-        runs=("batter_runs", "sum"),
-        balls=("batter_runs", "count"),
-    ).reset_index().query("balls >= 50").copy()
-    bat_by_season["sr"] = bat_by_season["runs"] / bat_by_season["balls"] * 100
-    bat_by_season["bat_z"] = bat_by_season.groupby("season")["sr"].transform(
-        lambda x: (x - x.mean()) / x.std() if x.std() > 0 else 0.0
-    )
-
-    # Bowling: economy per bowler per season (50+ legal balls bowled)
-    # Need wides included in runs conceded - re-derive without the wide filter
-    bowl_del = DEL[
-        (DEL["season"] >= min_yr) & (DEL["season"] <= max_yr) & (~DEL["super_over"])
-    ]
-    legal_bowl = bowl_del[~bowl_del["is_wide"]]
-    bowl_balls_s = legal_bowl.groupby(["season", "bowler"]).size().reset_index(name="balls_bowled")
-    bowl_runs_s  = bowl_del.groupby(["season", "bowler"])["total_runs"].sum().reset_index(name="runs_conceded")
-    bowl_by_season = bowl_balls_s.merge(bowl_runs_s, on=["season", "bowler"]).query("balls_bowled >= 50").copy()
-    bowl_by_season["econ"] = bowl_by_season["runs_conceded"] / (bowl_by_season["balls_bowled"] / 6)
-    # Negate: lower economy is better, so the elite bowler gets a positive z-score
-    bowl_by_season["bowl_z"] = bowl_by_season.groupby("season")["econ"].transform(
-        lambda x: -(x - x.mean()) / x.std() if x.std() > 0 else 0.0
-    )
-
-    # Merge: only players who qualify in both batting (50+ balls faced) and bowling (50+ balls bowled)
-    ar_z = (
-        bat_by_season[["season", "batter", "bat_z"]]
-        .merge(
-            bowl_by_season[["season", "bowler", "bowl_z"]].rename(columns={"bowler": "batter"}),
-            on=["season", "batter"],
-            how="inner",
-        )
-        .copy()
-    )
-    ar_z["combined_z"] = ar_z["bat_z"] + ar_z["bowl_z"]
-
+    # Re-derive from the filtered ar_f so the batting position filter (<=7) applies here too.
+    # Using the pre-computed CSV would include tail-enders who sneak past the z-score threshold.
     season_best = (
-        ar_z.loc[ar_z.groupby("season")["combined_z"].idxmax()]
+        ar_f.loc[ar_f.groupby("season")["combined_z"].idxmax()]
         .sort_values("season")
         .reset_index(drop=True)
     )
-    season_best["display_name"] = season_best["batter"].map(get_full_name)
-    # Short label: last name only for bars (keeps chart readable)
+    season_best["display_name"] = season_best["player"].map(get_full_name)
     season_best["short_name"] = season_best["display_name"].apply(
         lambda n: n.split()[-1] if " " in n else n
     )

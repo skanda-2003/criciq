@@ -6,13 +6,15 @@ import plotly.graph_objects as go
 
 from components.metric_card import metric_card
 from components.charts import CHART_THEME, empty_figure
-from data.loader import DEL, MAT
-from src.name_map import get_full_name
+from data.loader import MAT
 from src.constants import TEAM_RENAME as _RENAME
+
+# Pre-computed in notebooks/10_team_season_stats.ipynb
+_TEAM = pd.read_csv("data/processed/team_season_stats.csv")
 
 dash.register_page(__name__, path="/team", name="Team Strategy", title="CricIQ - Team Strategy")
 
-# Team list built from all seasons so it doesn't shrink when season filter narrows
+# Team list built from all seasons so the dropdown doesn't shrink when the season filter narrows
 _mat_all = MAT.copy()
 for _col in ["team1", "team2"]:
     _mat_all[_col] = _mat_all[_col].replace(_RENAME)
@@ -121,56 +123,55 @@ def update_team(selected_team, season_data):
         else f"Team Strategy · {selected_team} · {min_yr}-{max_yr}"
     )
 
-    # Filter + apply team renames so all name variants collapse to their current name
-    mat_f = MAT[(MAT["season"] >= min_yr) & (MAT["season"] <= max_yr)].copy()
-    for col in ["team1", "team2", "winner", "toss_winner"]:
-        mat_f[col] = mat_f[col].replace(_RENAME)
-
-    del_f = DEL[
-        (DEL["season"] >= min_yr) &
-        (DEL["season"] <= max_yr) &
-        (~DEL["super_over"])
+    # Filter pre-computed CSV to this team + season window
+    team_f = _TEAM[
+        (_TEAM["team"] == selected_team) &
+        (_TEAM["season"] >= min_yr) &
+        (_TEAM["season"] <= max_yr)
     ].copy()
-    for col in ["batting_team", "bowling_team", "match_winner"]:
-        del_f[col] = del_f[col].replace(_RENAME)
 
-    legal = del_f[~del_f["is_wide"]]
-
-    # All matches the selected team played in
-    team_matches = mat_f[
-        (mat_f["team1"] == selected_team) | (mat_f["team2"] == selected_team)
-    ].reset_index(drop=True)
-
-    n_total = len(team_matches)
+    n_total = int(team_f["matches"].sum())
     if n_total == 0:
         empty = empty_figure("No data for selected filters")
         return title, [], empty, "", empty, "", empty, "", empty, ""
 
-    # ── Batting first vs chasing: determined from innings 1 in DEL ──
-    # A team bats first if they appear as batting_team in innings == 1
+    # MAT is still needed for Chart B (toss by venue requires venue column)
+    # and for bat-first/chase win rate metric cards
+    mat_f = MAT[(MAT["season"] >= min_yr) & (MAT["season"] <= max_yr)].copy()
+    for col in ["team1", "team2", "winner", "toss_winner"]:
+        mat_f[col] = mat_f[col].replace(_RENAME)
+
+    team_matches = mat_f[
+        (mat_f["team1"] == selected_team) | (mat_f["team2"] == selected_team)
+    ].reset_index(drop=True)
+
+    # Determine bat-first matches from MAT toss data (no DEL needed)
+    # A team bats first if they won the toss and chose bat, or the opponent won and chose field
     bat_first_ids = set(
-        del_f[(del_f["batting_team"] == selected_team) & (del_f["innings"] == 1)]["match_id"].unique()
+        team_matches[
+            ((team_matches["toss_winner"] == selected_team) & (team_matches["toss_decision"] == "bat")) |
+            ((team_matches["toss_winner"] != selected_team) & (team_matches["toss_decision"] == "field"))
+        ]["match_id"]
     )
-    chase_ids = set(
-        del_f[(del_f["batting_team"] == selected_team) & (del_f["innings"] == 2)]["match_id"].unique()
-    )
+    chase_ids = set(team_matches["match_id"]) - bat_first_ids
 
     # ── Metric cards ─────────────────────────────────────────────────
-    wins       = len(team_matches[team_matches["winner"] == selected_team])
-    win_rate   = wins / n_total * 100
+    wins     = int(team_f["wins"].sum())
+    win_rate = wins / n_total * 100
 
     bat_first_matches = team_matches[team_matches["match_id"].isin(bat_first_ids)]
-    n_bat_first       = len(bat_first_matches)
-    bat_first_wins    = len(bat_first_matches[bat_first_matches["winner"] == selected_team])
-    bat_first_rate    = bat_first_wins / n_bat_first * 100 if n_bat_first > 0 else 0
+    n_bat_first    = len(bat_first_matches)
+    bat_first_wins = len(bat_first_matches[bat_first_matches["winner"] == selected_team])
+    bat_first_rate = bat_first_wins / n_bat_first * 100 if n_bat_first > 0 else 0
 
     chase_matches = team_matches[team_matches["match_id"].isin(chase_ids)]
-    n_chase       = len(chase_matches)
-    chase_wins    = len(chase_matches[chase_matches["winner"] == selected_team])
-    chase_rate    = chase_wins / n_chase * 100 if n_chase > 0 else 0
+    n_chase    = len(chase_matches)
+    chase_wins = len(chase_matches[chase_matches["winner"] == selected_team])
+    chase_rate = chase_wins / n_chase * 100 if n_chase > 0 else 0
 
-    toss_wins   = len(team_matches[team_matches["toss_winner"] == selected_team])
-    toss_rate   = toss_wins / n_total * 100
+    # toss_chose_bat + toss_chose_field = total toss wins for this team
+    toss_wins = int(team_f["toss_chose_bat"].sum() + team_f["toss_chose_field"].sum())
+    toss_rate = toss_wins / n_total * 100
 
     metrics = [
         dbc.Col(metric_card(
@@ -200,26 +201,22 @@ def update_team(selected_team, season_data):
     ]
 
     # ── Chart A: Phase scoring profile vs league avg ──────────────────
-    # Use del_f (includes wides) so extras count toward the innings total
-    team_bat_del   = del_f[del_f["batting_team"] == selected_team]
-    phases         = ["powerplay", "middle", "death"]
-    phase_labels   = ["Powerplay", "Middle", "Death"]
-    team_phase_avg = []
-    league_phase_avg = []
+    # Weighted average across seasons (weight by matches played that season)
+    team_pp    = (team_f["pp_avg_runs"]    * team_f["matches"]).sum() / n_total
+    team_mid   = (team_f["mid_avg_runs"]   * team_f["matches"]).sum() / n_total
+    team_death = (team_f["death_avg_runs"] * team_f["matches"]).sum() / n_total
 
-    for ph in phases:
-        # Team: avg runs per batting innings in this phase
-        t_ph  = team_bat_del[team_bat_del["phase"] == ph]
-        t_per = t_ph.groupby("match_id")["total_runs"].sum()
-        team_phase_avg.append(t_per.mean() if len(t_per) > 0 else 0)
+    # League avg: all teams across the same season window, also weighted by matches
+    league_f    = _TEAM[(_TEAM["season"] >= min_yr) & (_TEAM["season"] <= max_yr)]
+    n_league    = int(league_f["matches"].sum())
+    league_pp    = (league_f["pp_avg_runs"]    * league_f["matches"]).sum() / n_league
+    league_mid   = (league_f["mid_avg_runs"]   * league_f["matches"]).sum() / n_league
+    league_death = (league_f["death_avg_runs"] * league_f["matches"]).sum() / n_league
 
-        # League: avg runs per (match, batting_team) pair in this phase
-        l_ph  = del_f[del_f["phase"] == ph]
-        l_per = l_ph.groupby(["match_id", "batting_team"])["total_runs"].sum()
-        league_phase_avg.append(l_per.mean() if len(l_per) > 0 else 0)
-
-    # Short name for the legend: last word of team name (e.g. "Indians", "Kings")
-    short_name = selected_team.split()[-1]
+    phase_labels    = ["Powerplay", "Middle", "Death"]
+    team_phase_avg  = [team_pp,    team_mid,   team_death]
+    league_phase_avg= [league_pp,  league_mid, league_death]
+    short_name      = selected_team.split()[-1]
 
     fig_phase = go.Figure([
         go.Bar(
@@ -256,15 +253,18 @@ def update_team(selected_team, season_data):
     phase_label = f"Phase Scoring Profile · Avg runs per innings · {selected_team} vs League"
 
     # ── Chart B: Toss decision preference by venue ────────────────────
-    # For each venue with 3+ matches, show % of matches where team batted first
+    # MAT is needed here because venue is not in the pre-computed CSV
     venue_rows = []
     for venue, grp in team_matches.groupby("venue"):
+        # Only show the 16 major IPL grounds that are in _VENUE_SHORT
+        if venue not in _VENUE_SHORT:
+            continue
         if len(grp) < 3:
             continue
-        n_v       = len(grp)
-        n_bf      = sum(1 for mid in grp["match_id"] if mid in bat_first_ids)
-        bat_pct   = n_bf / n_v * 100
-        short_v   = _VENUE_SHORT.get(venue, venue.split(",")[0][:14])
+        n_v     = len(grp)
+        n_bf    = sum(1 for mid in grp["match_id"] if mid in bat_first_ids)
+        bat_pct = n_bf / n_v * 100
+        short_v = _VENUE_SHORT.get(venue, venue.split(",")[0][:14])
         venue_rows.append({"venue": short_v, "bat_pct": bat_pct, "n": n_v})
 
     if venue_rows:
@@ -298,21 +298,16 @@ def update_team(selected_team, season_data):
         fig_toss = empty_figure("Fewer than 3 matches at any single venue")
 
     toss_label = (
-        f"Bat-First Tendency by Venue · % of matches · 3+ matches threshold "
-        f"· Dashed = 50% (even split)"
+        "Bat-First Tendency by Venue · % of matches · 3+ matches threshold "
+        "· Dashed = 50% (even split)"
     )
 
     # ── Chart C: Win rate trend by season ─────────────────────────────
-    season_rows = []
-    for season, grp in team_matches.groupby("season"):
-        n_s   = len(grp)
-        w_s   = len(grp[grp["winner"] == selected_team])
-        season_rows.append({"season": int(season), "win_pct": w_s / n_s * 100, "wins": w_s, "total": n_s})
+    s_df = team_f[["season", "win_rate", "wins", "matches"]].sort_values("season").copy()
+    s_df["win_pct"] = s_df["win_rate"] * 100
 
-    if season_rows:
-        s_df = pd.DataFrame(season_rows).sort_values("season")
+    if not s_df.empty:
         fig_wr = go.Figure()
-        # Shaded area under the line
         fig_wr.add_trace(go.Scatter(
             x=s_df["season"],
             y=s_df["win_pct"],
@@ -321,7 +316,7 @@ def update_team(selected_team, season_data):
             marker={"size": 6, "color": "#3b82f6"},
             fill="tozeroy",
             fillcolor="rgba(59,130,246,0.07)",
-            customdata=s_df[["wins", "total"]].values,
+            customdata=s_df[["wins", "matches"]].values,
             hovertemplate=(
                 "<b>%{x}</b><br>"
                 "Win rate: <b>%{y:.0f}%</b><br>"
@@ -339,46 +334,26 @@ def update_team(selected_team, season_data):
     else:
         fig_wr = empty_figure("No season data")
 
-    wr_label = f"Win Rate by Season · Dashed = 50% benchmark"
+    wr_label = "Win Rate by Season · Dashed = 50% benchmark"
 
-    # ── Chart D: Batting depth indicator ─────────────────────────────
-    # Count matches per season where batting positions 7-9 scored 20+ combined
-    lower = legal[
-        (legal["batting_team"] == selected_team) &
-        (legal["batting_position"].isin([7, 8, 9]))
-    ]
-    lower_per_match = (
-        lower.groupby(["match_id", "season"])["batter_runs"]
-        .sum()
-        .reset_index(name="lower_runs")
-    )
-    depth_matches = lower_per_match[lower_per_match["lower_runs"] >= 20]
-    depth_per_season = depth_matches.groupby("season").size().reset_index(name="count")
-
-    # Merge with total matches per season to compute proportion for hover
-    total_per_season = team_matches.groupby("season").size().reset_index(name="total")
-    depth_per_season = (
-        depth_per_season
-        .merge(total_per_season, on="season", how="right")
-        .fillna(0)
-        .sort_values("season")
-    )
-    depth_per_season["season_str"] = depth_per_season["season"].astype(int).astype(str)
+    # ── Chart D: Batting depth by season ─────────────────────────────
+    # depth_avg_runs = avg runs from batting positions 7-9 per match
+    d_df = team_f[["season", "depth_avg_runs"]].sort_values("season").copy()
+    d_df["season_str"] = d_df["season"].astype(int).astype(str)
 
     fig_depth = go.Figure(go.Bar(
-        x=depth_per_season["season_str"],
-        y=depth_per_season["count"],
+        x=d_df["season_str"],
+        y=d_df["depth_avg_runs"],
         marker_color="#22c55e",
         marker_line_width=0,
         width=0.5,
-        text=depth_per_season["count"].astype(int).astype(str),
+        text=[f"{v:.0f}" for v in d_df["depth_avg_runs"]],
         textposition="outside",
         textfont={"size": 9, "color": "#777", "family": "IBM Plex Mono, monospace"},
-        customdata=depth_per_season[["count", "total"]].values,
         hovertemplate=(
             "<b>%{x}</b><br>"
-            "Matches with 20+ lower-order runs: <b>%{customdata[0]:.0f}</b>"
-            " of %{customdata[1]:.0f}<extra></extra>"
+            "Avg runs from positions 7-9: <b>%{y:.1f}</b>"
+            "<extra></extra>"
         ),
     ))
     fig_depth.update_layout(**CHART_THEME)
@@ -387,7 +362,7 @@ def update_team(selected_team, season_data):
         xaxis={**CHART_THEME["xaxis"], "tickfont": {"family": "Inter, system-ui, sans-serif", "size": 9}},
         margin={**CHART_THEME["margin"], "t": 24},
     )
-    depth_label = "Batting Depth · Matches with 20+ runs from positions 7-9"
+    depth_label = "Batting Depth by Season · Avg runs from positions 7-9 per match"
 
     return (
         title, metrics,

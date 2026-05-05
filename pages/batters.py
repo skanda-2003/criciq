@@ -6,8 +6,11 @@ import plotly.graph_objects as go
 
 from components.metric_card import metric_card
 from components.charts import CHART_THEME, empty_figure
-from data.loader import DEL
 from src.name_map import get_full_name
+
+# Pre-computed in notebooks/08_batter_season_stats.ipynb
+# One row per batter per season with per-phase and overall stats + RAPA
+_BAT = pd.read_csv("data/processed/batter_phase_season.csv")
 
 dash.register_page(__name__, path="/batters", name="Batting Analytics", title="CricIQ - Batting Analytics")
 
@@ -146,39 +149,60 @@ def update_batting(season_data):
         else f"Batting Analytics · {min_yr}-{max_yr}"
     )
 
-    # Filter to selected window; exclude super overs throughout
-    del_f = DEL[
-        (DEL["season"] >= min_yr) &
-        (DEL["season"] <= max_yr) &
-        (~DEL["super_over"])
-    ]
-    # Wides don't count as balls faced - exclude from all per-ball stats
-    legal = del_f[~del_f["is_wide"]]
+    # Filter pre-computed CSV to selected season window
+    bat_f = _BAT[(_BAT["season"] >= min_yr) & (_BAT["season"] <= max_yr)].copy()
 
-    # ── Phase stats: one row per batter x phase ──────────────────────
-    phase_stats = legal.groupby(["batter", "phase"]).agg(
-        balls_faced=("batter_runs", "count"),
-        runs_scored=("batter_runs", "sum"),
-        fours      =("is_boundary_4", "sum"),
-        sixes      =("is_boundary_6", "sum"),
-        dots       =("is_dot", "sum"),
-    ).reset_index()
-    phase_stats["boundaries"]   = phase_stats["fours"] + phase_stats["sixes"]
-    phase_stats["strike_rate"]  = phase_stats["runs_scored"] / phase_stats["balls_faced"] * 100
-    phase_stats["boundary_pct"] = phase_stats["boundaries"] / phase_stats["balls_faced"] * 100
+    # Reconstruct boundary counts from pct × balls so I can aggregate across seasons correctly.
+    # Storing pct in the CSV saves space; multiplying back gives the raw count for summing.
+    for prefix in ["pp", "mid", "death"]:
+        bat_f[f"{prefix}_boundaries"] = bat_f[f"{prefix}_boundary_pct"] / 100 * bat_f[f"{prefix}_balls"]
 
-    # ── Overall stats across all phases combined ──────────────────────
-    total = legal.groupby("batter").agg(
-        total_balls=("batter_runs", "count"),
-        total_runs =("batter_runs", "sum"),
-        fours      =("is_boundary_4", "sum"),
-        sixes      =("is_boundary_6", "sum"),
+    # Career aggregates: sum each batter's stats across all seasons in the window.
+    # This collapses e.g. Kohli's 2021 and 2022 pp rows into one career pp row.
+    career = bat_f.groupby("batter").agg(
+        total_balls          =("total_balls",    "sum"),
+        total_runs           =("total_runs",     "sum"),
+        pp_balls             =("pp_balls",       "sum"),
+        pp_runs              =("pp_runs",        "sum"),
+        pp_boundaries        =("pp_boundaries",  "sum"),
+        mid_balls            =("mid_balls",      "sum"),
+        mid_runs             =("mid_runs",       "sum"),
+        mid_boundaries       =("mid_boundaries", "sum"),
+        death_balls          =("death_balls",    "sum"),
+        death_runs           =("death_runs",     "sum"),
+        death_boundaries     =("death_boundaries","sum"),
+        avg_batting_position =("avg_batting_position","mean"),
     ).reset_index()
-    total["boundaries"]   = total["fours"] + total["sixes"]
-    total["sr"]           = total["total_runs"] / total["total_balls"] * 100
-    total["boundary_pct"] = total["boundaries"] / total["total_balls"] * 100
-    # 50+ total balls to qualify - filters out players with tiny samples
-    total_q = total[total["total_balls"] >= 50].copy()
+
+    # Derive rate stats from the aggregated counts
+    career["sr"]           = career["total_runs"] / career["total_balls"] * 100
+    career["boundary_pct"] = (career["pp_boundaries"] + career["mid_boundaries"] + career["death_boundaries"]) / career["total_balls"] * 100
+    career["pp_sr"]        = career["pp_runs"]    / career["pp_balls"].replace(0, float("nan"))    * 100
+    career["mid_sr"]       = career["mid_runs"]   / career["mid_balls"].replace(0, float("nan"))   * 100
+    career["death_sr"]     = career["death_runs"] / career["death_balls"].replace(0, float("nan")) * 100
+    career["pp_boundary_pct"]    = career["pp_boundaries"]    / career["pp_balls"].replace(0, float("nan"))    * 100
+    career["mid_boundary_pct"]   = career["mid_boundaries"]   / career["mid_balls"].replace(0, float("nan"))   * 100
+    career["death_boundary_pct"] = career["death_boundaries"] / career["death_balls"].replace(0, float("nan")) * 100
+
+    # 50+ total balls to qualify
+    total_q = career[career["total_balls"] >= 50].copy()
+
+    # Build phase_stats shape expected by chart sections below:
+    # powerplay, middle, death leaderboards each need: batter, balls_faced, runs_scored, strike_rate, boundary_pct
+    def _phase_df(prefix, phase_name):
+        d = career.rename(columns={
+            f"{prefix}_balls":        "balls_faced",
+            f"{prefix}_runs":         "runs_scored",
+            f"{prefix}_sr":           "strike_rate",
+            f"{prefix}_boundary_pct": "boundary_pct",
+        })[["batter", "balls_faced", "runs_scored", "strike_rate", "boundary_pct",
+            "avg_batting_position"]].copy()
+        d["phase"] = phase_name
+        return d
+
+    pp_all    = _phase_df("pp",    "powerplay")
+    mid_all   = _phase_df("mid",   "middle")
+    death_all = _phase_df("death", "death")
 
     # ── Metric cards ──────────────────────────────────────────────────
     best_sr_row    = total_q.loc[total_q["sr"].idxmax()]
@@ -220,12 +244,10 @@ def update_batting(season_data):
     ]
 
     # ── Chart A: Powerplay specialists ────────────────────────────────
-    pp_q = phase_stats[
-        (phase_stats["phase"] == "powerplay") & (phase_stats["balls_faced"] >= 50)
-    ].copy()
+    pp_q = pp_all[pp_all["balls_faced"] >= 50].copy()
     pp_top = pp_q.sort_values("strike_rate", ascending=False).head(10).reset_index(drop=True)
     pp_top["display_name"] = pp_top["batter"].map(get_full_name)
-    # Weighted league avg: total runs / total balls across all pp qualifiers
+    # Weighted league avg: total pp runs / total pp balls across all qualifiers
     pp_league_sr = pp_q["runs_scored"].sum() / pp_q["balls_faced"].sum() * 100
 
     fig_pp = go.Figure(go.Bar(
@@ -256,9 +278,7 @@ def update_batting(season_data):
     pp_label = f"Powerplay Specialists · SR in Overs 1-6 · Dashed = league avg {pp_league_sr:.0f}"
 
     # ── Chart B: Middle overs anchors ─────────────────────────────────
-    mid_q = phase_stats[
-        (phase_stats["phase"] == "middle") & (phase_stats["balls_faced"] >= 50)
-    ].copy()
+    mid_q = mid_all[mid_all["balls_faced"] >= 50].copy()
     mid_top = mid_q.sort_values("strike_rate", ascending=False).head(10).reset_index(drop=True)
     mid_top["display_name"] = mid_top["batter"].map(get_full_name)
     mid_league_sr = mid_q["runs_scored"].sum() / mid_q["balls_faced"].sum() * 100
@@ -291,19 +311,9 @@ def update_batting(season_data):
     mid_label = f"Middle Overs Anchors · SR in Overs 7-15 · Dashed = league avg {mid_league_sr:.0f}"
 
     # ── Chart C: Death specialists ─────────────────────────────────────
-    # Batting position is not in phase_batting.csv, so I compute it from DEL directly.
-    # This is also why Chart C responds to the season filter but Charts A and B can't if
-    # they were reading a pre-computed CSV - here all three read DEL, so all respond.
-    death_q = phase_stats[
-        (phase_stats["phase"] == "death") & (phase_stats["balls_faced"] >= 50)
-    ].copy()
-    avg_pos = (
-        legal[legal["phase"] == "death"]
-        .groupby("batter")["batting_position"]
-        .mean()
-        .reset_index(name="avg_position")
-    )
-    death_q = death_q.merge(avg_pos, on="batter", how="left")
+    # avg_batting_position is pre-computed in batter_phase_season.csv (notebook 08)
+    death_q = death_all[death_all["balls_faced"] >= 50].copy()
+    death_q = death_q.rename(columns={"avg_batting_position": "avg_position"})
 
     # Compute league avg before applying the position filter so it reflects all qualifiers
     death_league_sr = death_q["runs_scored"].sum() / death_q["balls_faced"].sum() * 100
@@ -349,12 +359,12 @@ def update_batting(season_data):
     )
 
     # ── Chart D: Complete batsmen scatter ─────────────────────────────
-    # Players with 50+ balls in BOTH powerplay AND death qualify.
-    # No position filter here - an opener who is also elite in death is genuinely interesting.
+    # Players with 50+ career pp balls AND 50+ career death balls qualify.
+    # No position filter - an opener who is elite in death is genuinely interesting.
     pp_scatter = pp_q[["batter", "strike_rate", "balls_faced"]].rename(
         columns={"strike_rate": "pp_sr", "balls_faced": "pp_balls"}
     )
-    # death_q already has 50+ death ball filter; use all qualifiers (not just position > 5)
+    # death_q has 50+ death balls; use all qualifiers (not just position > 5)
     death_scatter = death_q[["batter", "strike_rate", "balls_faced"]].rename(
         columns={"strike_rate": "death_sr", "balls_faced": "death_balls"}
     )
@@ -454,16 +464,10 @@ def update_batting(season_data):
     )
 
     # ── Chart E: Season runs leader (volume) ─────────────────────────
-    # Most runs scored in a season - 50+ balls to qualify.
-    # Answers: who was the run machine? (Kohli 2016, Gill 2023, Buttler 2022)
-    season_runs = legal.groupby(["season", "batter"]).agg(
-        total_runs=("batter_runs", "sum"),
-        total_balls=("batter_runs", "count"),
-    ).reset_index().query("total_balls >= 50")
-
+    # bat_f has one row per batter per season - find the top scorer each season.
     runs_best = (
-        season_runs
-        .loc[season_runs.groupby("season")["total_runs"].idxmax()]
+        bat_f[bat_f["total_balls"] >= 50]
+        .loc[lambda df: df.groupby("season")["total_runs"].idxmax()]
         .sort_values("season")
         .reset_index(drop=True)
     )
@@ -498,32 +502,11 @@ def update_batting(season_data):
     runs_label = f"Season Runs Leader · Most Runs per Season · {min_yr}-{max_yr}"
 
     # ── Chart F: Season efficiency leader (RAPA) ──────────────────────
-    # Runs Above Phase Average: extra runs scored vs what an avg batter would score
-    # in the same balls and phases. Accounts for positional expectations - a finisher
-    # must beat the death-phase baseline of ~171 SR, not the overall ~140 average.
-    # Answers: who dominated relative to their role context? (ABD 2016, Suryavanshi)
-    phase_avgs = legal.groupby(["season", "phase"]).agg(
-        total_runs=("batter_runs", "sum"),
-        total_balls=("batter_runs", "count"),
-    ).reset_index()
-    phase_avgs["league_sr"] = phase_avgs["total_runs"] / phase_avgs["total_balls"] * 100
-
-    batter_phase = legal.groupby(["season", "batter", "phase"]).agg(
-        runs=("batter_runs", "sum"),
-        balls=("batter_runs", "count"),
-    ).reset_index()
-    batter_phase = batter_phase.merge(phase_avgs[["season", "phase", "league_sr"]], on=["season", "phase"])
-    batter_phase["rapa"] = batter_phase["runs"] - (batter_phase["league_sr"] / 100 * batter_phase["balls"])
-
-    season_rapa = batter_phase.groupby(["season", "batter"]).agg(
-        rapa=("rapa", "sum"),
-        total_runs=("runs", "sum"),
-        total_balls=("balls", "sum"),
-    ).reset_index().query("total_balls >= 50")
-
+    # RAPA is pre-computed per batter per season in batter_phase_season.csv (notebook 08).
+    # Just find the max per season within the filtered window.
     rapa_best = (
-        season_rapa
-        .loc[season_rapa.groupby("season")["rapa"].idxmax()]
+        bat_f[bat_f["total_balls"] >= 50]
+        .loc[lambda df: df.groupby("season")["rapa"].idxmax()]
         .sort_values("season")
         .reset_index(drop=True)
     )

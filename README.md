@@ -76,6 +76,18 @@ Logistic Regression baseline trained on 2019-2026 chase data. Features include c
 **5. Player Impact Score** (`notebooks/06_player_impact.ipynb`)
 Composite metric: batting contribution vs phase average (50%), bowling economy vs venue average (35%), fielding from wicket records (15%). Weights are per-role - a pure batsman is not penalised for not bowling. Produces per-match scores and season leaderboards from 2021-26.
 
+**6. Allrounder Stats** (`notebooks/07_allrounder_stats.ipynb`)
+Within-pool z-scores for batting SR and bowling economy, computed against only the allrounder pool (50+ balls faced AND 50+ balls bowled in the same season). Saves `allrounder_scores.csv` and `allrounder_season_best.csv` covering all seasons 2008-2026.
+
+**7. Batter Season Stats** (`notebooks/08_batter_season_stats.ipynb`)
+Per-batter per-season stats for all three phases: balls, runs, SR, boundary%, dot%. Saves `batter_phase_season.csv` - one row per batter per season with all phase columns. The dashboard aggregates across seasons client-side so any season window works correctly.
+
+**8. Bowler Season Stats** (`notebooks/09_bowler_season_stats.ipynb`)
+Per-bowler per-season phase stats: balls, runs, wickets, economy for powerplay, death, and overall. Also saves `bowler_wicket_types.csv` with three dismissal categories (bowled+lbw, caught, other).
+
+**9. Team Season Stats** (`notebooks/10_team_season_stats.ipynb`)
+Per-team per-season: phase scoring averages, win/loss record, toss decisions, and batting depth (avg runs from positions 7-9 per match). Saves `team_season_stats.csv`.
+
 ---
 
 ## Tech Stack
@@ -96,6 +108,10 @@ A few decisions that shaped the project and that I think are worth explaining.
 **Pre-flattening all data into two canonical DataFrames**
 
 Cricsheet delivers data as nested JSON - one file per match, with deliveries nested inside innings inside each file. I parse all of it once upfront into `deliveries.csv` (one row per ball) and `matches.csv` (one row per match). Every notebook and every dashboard page reads from those two files. The alternative - re-parsing JSON on each query - would have made every analysis slower and harder to reproduce. Separating data engineering from analysis also means I could validate the parser once and trust it everywhere downstream.
+
+**Notebook-first data architecture**
+
+All data shown in the dashboard is pre-computed in a Jupyter notebook and saved to a CSV. Dashboard callbacks only filter and render - no groupby, no aggregation inside a callback. Pre-computed CSVs store one row per entity per season so any season window (2021-26, all-time, or custom) works correctly by filtering on the `season` column at callback time. Pages that are inherently user-selection-driven (`player.py`, `head_to_head.py`, `simulator.py`) stay DEL-based since the stat space is too large to pre-compute.
 
 **Engineering `run_rate_pressure` as a feature**
 
@@ -172,7 +188,7 @@ criciq/
 │   ├── loader.py       # Shared DataFrame loader
 │   ├── raw/            # Cricsheet JSONs and Kaggle CSVs
 │   └── processed/      # deliveries.csv, matches.csv, and pre-computed analysis CSVs
-├── notebooks/          # 6 notebooks: parser validation, 5 analysis angles
+├── notebooks/          # 10 notebooks: parser validation, 5 analysis angles, 4 pre-compute notebooks
 ├── src/                # parser.py, name_map.py, wp_model.py
 └── models/             # Saved encoder artifacts
 ```
