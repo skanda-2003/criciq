@@ -348,7 +348,7 @@ def update_bowler(season_data):
         x=[104] * len(wkt_counts),
         y=wkt_counts["display_name"].tolist(),
         mode="text",
-        text=[f"{w}w" for w in wkt_counts["wickets"]],
+        text=[f"{int(w)}w" for w in wkt_counts["wickets"]],
         textfont={"size": 8, "color": "#888", "family": "IBM Plex Mono, monospace"},
         showlegend=False,
         hoverinfo="skip",
