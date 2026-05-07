@@ -522,6 +522,7 @@ def update_player(player, season_data, matchup_metric, player_compare):
                 textposition="outside",
                 textfont={"size": 10, "color": "#888"},
                 showlegend=False,
+                hovertemplate="<b>%{y}</b><br>SR: %{x:.0f}<extra></extra>",
             ))
 
             for phase in phases_with_data:
