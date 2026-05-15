@@ -29,11 +29,11 @@ All pages respond to a season filter (default: 2021-26). This keeps the analysis
 
 ## Screenshots
 
-**Overview - season trends, venue intelligence, phase breakdown**
-![Overview](screenshots/overview.png)
+**Overview - season trends, venue intelligence, death specialist leaderboard**
+<img src="screenshots/overview.png" width="800">
 
 **Player Deep-Dive - Virat Kohli vs Rohit Sharma comparison**
-![Virat vs Rohit](screenshots/virat_vs_rohit.png)
+<img src="screenshots/virat_vs_rohit.png" width="800">
 
 ---
 
