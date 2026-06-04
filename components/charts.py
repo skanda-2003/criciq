@@ -6,14 +6,14 @@ from components.theme import COLORS
 # Applied to every figure via fig.update_layout(**CHART_THEME).
 # Rule: always call update_layout(**CHART_THEME) first, then call it again
 # to override specific keys. Never spread **CHART_THEME and pass a key it
-# already contains in the same call — Python raises "multiple values" error.
+# already contains in the same call - Python raises "multiple values" error.
 _MONO = "IBM Plex Mono, monospace"
 _SANS = "Inter, system-ui, sans-serif"
 
 CHART_THEME = {
     "paper_bgcolor": "white",
     "plot_bgcolor":  "white",
-    # Default font for all chart text — IBM Plex Mono because chart content is data
+    # Default font for all chart text - IBM Plex Mono because chart content is data
     "font": {"family": _MONO, "size": 11, "color": "#777"},
     "xaxis": {
         "showgrid":  False,
@@ -32,27 +32,21 @@ CHART_THEME = {
         "title":     {"text": ""},
         "nticks":    4,
     },
-    # Hover tooltip: IBM Plex Mono — the tooltip shows data values
+    # Hover tooltip: IBM Plex Mono - the tooltip shows data values
     "hoverlabel": {
         "bgcolor":     "#ffffff",
         "bordercolor": "#e5e5e5",
         "font":        {"family": _MONO, "size": 11, "color": "#111"},
     },
     "margin":     {"l": 0, "r": 0, "t": 8, "b": 24},
-    # Legend labels describe chart series — Inter as UI chrome
+    # Legend labels describe chart series - Inter as UI chrome
     "legend":     {"font": {"family": _SANS, "size": 11, "color": "#888"}, "bgcolor": "rgba(0,0,0,0)", "borderwidth": 0},
     "showlegend": False,
 }
 
 
 def empty_figure(message="No data"):
-    """
-    Blank placeholder figure shown when data is loading or a filter returns nothing.
-
-    Parameters
-    ----------
-    message : str  Text centered in the empty chart area
-    """
+    """Blank placeholder shown when data is loading or a filter returns nothing."""
     fig = go.Figure()
     fig.update_layout(**CHART_THEME)
     fig.update_layout(
@@ -72,17 +66,7 @@ def empty_figure(message="No data"):
 
 
 def phase_bar(df, player_col, metric_col, color="blue", title=""):
-    """
-    Horizontal bar chart for phase batting leaderboards.
-
-    Parameters
-    ----------
-    df         : DataFrame  One row per player
-    player_col : str        Column for player names (y-axis)
-    metric_col : str        Column for the ranked metric (x-axis)
-    color      : str        COLORS key for bar fill, e.g. "blue" | "green" | "orange"
-    title      : str        Chart title
-    """
+    """Horizontal bar chart for phase batting leaderboards."""
     if df is None or df.empty:
         return empty_figure("No data for selected filters")
 
@@ -103,19 +87,7 @@ def phase_bar(df, player_col, metric_col, color="blue", title=""):
 
 
 def phase_stacked_bar(df, x_col, pp_col, mid_col, death_col, title=""):
-    """
-    Stacked bar chart breaking innings runs into powerplay / middle / death segments.
-    Powerplay = blue, middle = green, death = orange.
-
-    Parameters
-    ----------
-    df        : DataFrame  One row per match or team
-    x_col     : str        Column for x-axis labels (e.g. season or team name)
-    pp_col    : str        Column for powerplay run contribution
-    mid_col   : str        Column for middle overs run contribution
-    death_col : str        Column for death overs run contribution
-    title     : str        Chart title
-    """
+    """Stacked bar - pp/middle/death segments. Blue/green/orange."""
     if df is None or df.empty:
         return empty_figure()
 
@@ -134,17 +106,7 @@ def phase_stacked_bar(df, x_col, pp_col, mid_col, death_col, title=""):
 
 
 def win_probability_line(df, over_col, prob_col, title=""):
-    """
-    Line chart showing win probability over overs in a match.
-    Primary line: solid #111, 1.5px. Reference line: dashed #f97316, 60% opacity.
-
-    Parameters
-    ----------
-    df       : DataFrame  One row per over
-    over_col : str        Column for over number (x-axis)
-    prob_col : str        Column for win probability 0.0-1.0 (y-axis)
-    title    : str        Chart title
-    """
+    """Win probability over overs. Solid line, dashed 50% reference."""
     if df is None or df.empty:
         return empty_figure("No match selected")
 
@@ -166,15 +128,7 @@ def win_probability_line(df, over_col, prob_col, title=""):
 
 
 def win_probability_gauge(prob, title="Win Probability"):
-    """
-    Semi-circular gauge for the match simulator page.
-    Background zones: light red 0-40%, neutral 40-60%, light green 60-100%.
-
-    Parameters
-    ----------
-    prob  : float  Predicted win probability, 0.0 to 1.0
-    title : str    Label displayed above the gauge
-    """
+    """Semi-circular gauge for the simulator. Red/neutral/green background zones."""
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=round(prob * 100, 1),
@@ -201,18 +155,7 @@ def win_probability_gauge(prob, title="Win Probability"):
 
 
 def matchup_heatmap(df, x_col, y_col, value_col, title=""):
-    """
-    Diverging heatmap for bowler-batsman matchup matrix.
-    Low values (batsman struggles) = green. High values (batsman dominates) = orange.
-
-    Parameters
-    ----------
-    df        : DataFrame  Long format, one row per matchup
-    x_col     : str        Column for x-axis labels (bowler name or bowler type)
-    y_col     : str        Column for y-axis labels (batsman name)
-    value_col : str        Column for cell values (e.g. "strike_rate")
-    title     : str        Chart title
-    """
+    """Heatmap for bowler-batsman matchups. Green = batter struggles, orange = batter dominates."""
     if df is None or df.empty:
         return empty_figure("No matchup data")
 
@@ -234,17 +177,7 @@ def matchup_heatmap(df, x_col, y_col, value_col, title=""):
 
 
 def venue_bar(df, venue_col, metric_col, title=""):
-    """
-    Vertical bar chart for venue scoring rate comparison.
-    Bars at or above the dataset mean are blue; below are orange.
-
-    Parameters
-    ----------
-    df         : DataFrame  One row per venue
-    venue_col  : str        Column for venue names (x-axis)
-    metric_col : str        Column for the metric (y-axis, e.g. "run_rate")
-    title      : str        Chart title
-    """
+    """Vertical bar chart for venue RPO. Bars above mean = blue, below = orange."""
     if df is None or df.empty:
         return empty_figure("No venue data")
 

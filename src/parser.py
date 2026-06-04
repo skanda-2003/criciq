@@ -131,7 +131,7 @@ def parse_match(path: Path) -> tuple[list[dict], dict | None]:
                 cumulative_runs += total_runs
                 cumulative_wickets += len(wickets)
 
-                # track batting position: first time we see a batter in this innings,
+                # track batting position: first time a batter appears in this innings,
                 # assign them the next available position number
                 batter_name = ball_data.get("batter")
                 if batter_name not in batting_order:

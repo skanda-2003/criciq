@@ -2,7 +2,7 @@
 #
 # Cricsheet's registry maps every name string to a unique player ID
 # where the same player ID appears under multiple name strings across seasons,
-# we normalise to the most frequently used (canonical) form
+# normalise to the most frequently used (canonical) form
 #
 # usage:
 #     from src.name_map import build_name_map, standardise

@@ -1,7 +1,7 @@
 from dash import html
 
 
-# Maps color name to hex — used only for the dynamic bar fill inline style.
+# Maps color name to hex - used only for the dynamic bar fill inline style.
 # All other card styling lives in assets/style.css under .metric-card* selectors.
 FILL_COLORS = {
     "blue":   "#3b82f6",  # runs, batting metrics
@@ -11,18 +11,12 @@ FILL_COLORS = {
 }
 
 
+# label: ALL-CAPS text above the number
+# value: the big number string
+# secondary: smaller inline value (e.g. "/7"), None to hide
+# progress: 0-100 for the bar fill, None hides the bar
+# color: "blue" | "green" | "orange" | "red"
 def metric_card(label, value, secondary=None, progress=None, color="blue"):
-    """
-    Reusable metric card matching the CricIQ design spec.
-
-    Parameters
-    ----------
-    label     : str       ALL-CAPS label shown above the number, e.g. "Total Matches"
-    value     : str       Large bold primary number, e.g. "1,175"
-    secondary : str|None  Smaller value shown inline next to the big number, e.g. "/7"
-    progress  : int|None  0-100 fill percentage for the bar; omit to hide the bar entirely
-    color     : str       Bar fill color: "blue" | "green" | "orange" | "red"
-    """
     fill_color = FILL_COLORS.get(color, FILL_COLORS["blue"])
 
     value_row = html.Div([

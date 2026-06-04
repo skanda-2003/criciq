@@ -64,7 +64,7 @@ def add_run_rate_columns(df):
 def main():
     # step 1: parse all JSON files
     # parse_all loops over every JSON in data/raw/, flattens each match into rows
-    # and returns two DataFrames. also saves a first draft of the CSVs which we
+    # and returns two DataFrames. also saves a first draft of the CSVs which I
     # overwrite below after fixing the names
     print("Step 1: Parsing raw JSON files...")
     deliveries_df, matches_df = parse_all()
@@ -79,7 +79,7 @@ def main():
     print(f"  Name map built: {len(name_map)} entries")
 
     # step 3: add run-rate columns
-    # these are not in the raw JSON so we compute them here from the flattened data
+    # these are not in the raw JSON so I compute them here from the flattened data
     # doing this in main.py rather than parser.py keeps the parser focused on JSON to rows
     print("\nStep 3: Adding run-rate columns...")
     add_run_rate_columns(deliveries_df)
@@ -87,7 +87,7 @@ def main():
 
     # step 4: save the corrected deliveries CSV
     # matches_df has no player name columns so it doesn't need re-saving
-    # deliveries_df now has corrected names and run-rate columns so we overwrite
+    # deliveries_df now has corrected names and run-rate columns so I overwrite
     # the file that parse_all wrote in step 1
     print("\nStep 4: Saving corrected deliveries CSV...")
     deliveries_df.to_csv(PROCESSED_DIR / "deliveries.csv", index=False)

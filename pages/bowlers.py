@@ -87,24 +87,24 @@ layout = html.Div([
                 html.Span("Key Findings · 2021-26", className="chart-card__label"),
                 _finding("#3b82f6", [
                     html.Strong("Caught is the dominant dismissal mode by a wide margin."),
-                    " 76.1% of all bowler-credited wickets in 2021-26 were caught - "
-                    "including caught-and-bowled. Bowled accounts for just 15.5%, "
+                    " 78.0% of all bowler-credited wickets in 2021-26 were caught - "
+                    "including caught-and-bowled. Bowled and LBW combined account for 21.8%, "
                     "making edge and aerial dismissals the primary wicket-taking mechanism.",
                 ]),
                 _finding("#22c55e", [
-                    html.Strong("Sunil Narine's 6.31 death economy is a statistical outlier."),
-                    " The league avg in overs 16-20 is 10.32 - nearly 4 runs per over higher. "
-                    "Bumrah (7.35) is the closest pacer, confirming that Narine's death control "
+                    html.Strong("Sunil Narine's 6.25 death economy is a statistical outlier."),
+                    " The league avg in overs 16-20 is 10.38 - over 4 runs per over higher. "
+                    "Bumrah (7.38) is the closest pacer, confirming that Narine's death control "
                     "is genuinely unusual for an off-spinner.",
                 ]),
                 _finding("#f97316", [
-                    html.Strong("Death overs cost 19% more than the powerplay."),
-                    " Avg economy jumps from 8.67 in overs 1-6 to 10.32 in overs 16-20. "
+                    html.Strong("Death overs cost 17% more than the powerplay."),
+                    " Avg economy jumps from 8.90 in overs 1-6 to 10.38 in overs 16-20. "
                     "The hardest overs to bowl are also the ones that most directly decide matches.",
                 ]),
                 _finding("#ef4444", [
-                    html.Strong("Yuzvendra Chahal leads all bowlers with 106 wickets"),
-                    " in 2021-26 - the only bowler past 100. Leg-spin is the most prolific "
+                    html.Strong("Yuzvendra Chahal leads all bowlers with 111 wickets"),
+                    " in 2021-26 - the only bowler past 110. Leg-spin is the most prolific "
                     "wicket-taking style in modern IPL, outpacing both pace and left-arm spin.",
                 ]),
             ], className="chart-card findings-card"),
@@ -399,7 +399,7 @@ def update_bowler(season_data):
 
     fig_scatter = go.Figure()
 
-    # Shaded quadrant backgrounds — axis is clamped to 10/12 so x_max_s/y_max_s
+    # Shaded quadrant backgrounds - axis is clamped to 10/12 so x_max_s/y_max_s
     # match the visible area so the shading doesn't bleed past the axis limits.
     x_min   = scatter_df["pp_econ"].min()    - 0.5
     x_max_s = 10
