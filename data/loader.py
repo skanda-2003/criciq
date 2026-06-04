@@ -18,3 +18,16 @@ _BOOL_COLS = ["super_over", "is_wide", "is_noball", "is_boundary_4", "is_boundar
 for _col in _BOOL_COLS:
     if _col in DEL.columns:
         DEL[_col] = DEL[_col].astype(bool)
+
+# Convert high-cardinality string columns to category dtype - same value repeated
+# thousands of times (e.g. "powerplay" across 100k rows) as Python string objects
+# uses ~80 bytes each; category stores it once and uses a 2-byte integer per row.
+# Saves ~250MB of RAM at startup, which matters on memory-constrained free hosting.
+_CAT_COLS = [
+    "venue", "city", "batting_team", "bowling_team",
+    "batter", "non_striker", "bowler", "phase",
+    "wicket_kind", "match_winner", "player_out",
+]
+for _col in _CAT_COLS:
+    if _col in DEL.columns:
+        DEL[_col] = DEL[_col].astype("category")
