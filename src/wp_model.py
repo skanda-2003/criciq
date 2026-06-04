@@ -1,15 +1,7 @@
-"""
-Shared logistic regression win probability model.
-
-Imported by simulator.py and head_to_head.py so the model only
-loads once at server startup (Python caches modules after the first import).
-
-Training scope: 2nd innings, 2021+ seasons - modern T20 tactics only.
-The trained model is saved to models/wp_model.pkl after the first run.
-Subsequent startups load from that file directly - no retraining needed.
-If the file is missing or fails to load (e.g. stale after a reinstall),
-it retrains automatically and saves a fresh copy.
-"""
+# shared win probability model - logistic regression trained on 2021+ 2nd-innings data
+# imported by simulator.py and head_to_head.py; module caching means it only runs once per server start
+# saves to models/wp_model.pkl after training; loads from there on subsequent starts
+# if the pkl is missing or stale (e.g. after a sklearn upgrade), it retrains and overwrites
 import os
 import pickle
 import numpy as np

@@ -11,14 +11,14 @@ def create_navbar():
     Layout: brand name left | compact dataset stats inline | page links right | season toggle.
     Height is 48px, background #0f0f0f, no border or shadow.
     All visual rules live in assets/style.css under .ciq-navbar* selectors.
-    dbc.NavLink is used for nav links only — active="exact" adds .active
+    dbc.NavLink is used for nav links only - active="exact" adds .active
     automatically when the URL matches, which style.css targets for white color.
     """
     return html.Nav([
 
         html.A("CricIQ", href="/", className="ciq-navbar__brand"),
 
-        html.Span("1,175 matches · 279,586 deliveries", className="ciq-navbar__stats"),
+        html.Span("1,243 matches · 295,732 deliveries", className="ciq-navbar__stats"),
 
         html.Div([
             dbc.NavLink("Overview",     href="/",             active="exact", className="ciq-navbar__nav-link"),

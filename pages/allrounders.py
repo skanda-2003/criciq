@@ -80,13 +80,13 @@ layout = html.Div([
             html.Div([
                 html.Span("Key Findings · 2021-26", className="chart-card__label"),
                 _finding("#3b82f6", [
-                    html.Strong("Only 9 of 43 qualified allrounders sit in the elite quadrant"),
+                    html.Strong("Only 4 of 26 qualified allrounders sit in the elite quadrant"),
                     " (above-average in both batting and bowling among allrounder peers). "
                     "Genuine two-department contributors are the rarest archetype in IPL cricket.",
                 ]),
                 _finding("#22c55e", [
-                    html.Strong("Sunil Narine leads the combined leaderboard (2.82)."),
-                    " A combined 1.35 batting z + 1.48 bowling z - scored against allrounder "
+                    html.Strong("Sunil Narine leads the combined leaderboard (3.28)."),
+                    " A combined 1.98 batting z + 1.30 bowling z - scored against allrounder "
                     "peers only - makes him the most complete allrounder in this era.",
                 ]),
                 _finding("#f97316", [
@@ -97,7 +97,7 @@ layout = html.Div([
                 _finding("#ef4444", [
                     html.Strong("Rashid Khan was the season-best allrounder in 2023."),
                     " His exceptional economy combined with above-average batting for a spinner "
-                    "produced the highest single-season combined z-score (4.14) in the window.",
+                    "produced the highest single-season combined z-score (3.35) in the window.",
                 ]),
             ], className="chart-card findings-card"),
             width=4,

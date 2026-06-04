@@ -65,24 +65,24 @@ layout = html.Div([
                 html.Span("Key Findings · 2021-26", className="chart-card__label"),
                 _finding("#3b82f6", [
                     html.Strong("All-phase contributors are rare."),
-                    " Only 49 of 94 powerplay-qualified batters also qualify in the death phase "
+                    " Only 52 of 98 powerplay-qualified batters also qualify in the death phase "
                     "(50+ balls each). Most IPL batters are phase-specific - genuine all-rounders "
                     "of the bat are the exception, not the rule.",
                 ]),
                 _finding("#22c55e", [
                     html.Strong("Middle overs are the slowest phase."),
-                    " Avg SR of 137 in overs 7-15 is lower than even the powerplay (140). "
+                    " Avg SR of 133 in overs 7-15 is lower than even the powerplay (137). "
                     "Teams shift into consolidation mode between overs 7 and 15 - "
                     "the 'filler phase' is measurable in the data.",
                 ]),
                 _finding("#f97316", [
-                    html.Strong("Death overs carry a 22% SR premium."),
-                    " League avg SR jumps from 140 in the powerplay to 171 in overs 16-20. "
+                    html.Strong("Death overs carry a 15% SR premium."),
+                    " League avg SR jumps from 137 in the powerplay to 157 in overs 16-20. "
                     "Role specialization and pinch-hitting are measurable, not just tactical preference.",
                 ]),
                 _finding("#ef4444", [
                     html.Strong("Suryavanshi is a statistical outlier."),
-                    " His 225 SR across 290 balls sits 85 above the death-phase league average. "
+                    " His 227 SR across 293 balls sits 85 above the powerplay league average. "
                     "No other 2021-26 qualifier comes within 30 SR points of that gap.",
                 ]),
             ], className="chart-card findings-card"),

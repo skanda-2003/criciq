@@ -2,7 +2,7 @@
 
 A full-stack cricket analytics project built on ball-by-ball IPL data. The goal is to answer questions that coaching staff and analysts actually care about - not just career averages, but phase-specific performance, bowler matchups, venue effects, win probability, and a composite player impact metric built from first principles.
 
-Built with Python, Pandas, Scikit-learn, and Plotly Dash. Analysis spans 1,175 IPL matches and 279,586 deliveries from 2008 to 2026.
+Built with Python, Pandas, Scikit-learn, and Plotly Dash. Analysis spans 1,243 IPL matches and 295,732 deliveries from 2008 to 2026.
 
 **Live demo**: [criciq-983h.onrender.com](https://criciq-983h.onrender.com)
 
@@ -42,7 +42,7 @@ All pages respond to a season filter (default: 2021-26). This keeps the analysis
 These came out of the analysis and are surfaced in the dashboard - I wrote the hypotheses before running any numbers.
 
 **Venue**
-- Wankhede is not a batting paradise. In 2021-26 it is statistically below the league average (p = 0.014, Cohen's d = -0.02). Delhi, Bengaluru, and Kolkata are the actual high-scoring grounds.
+- Wankhede is not a batting paradise. In 2021-26 it is below the current-ground average (p = 0.048, d = -0.02). The effect is small but consistent - Dharamsala, Bengaluru, and Kolkata are the actual high-scoring grounds.
 - Chennai (Chepauk) is the hardest venue to bat at in this era - lowest run rate with the largest negative effect size (d = -0.10, p < 0.001). Bowling-first at Chepauk is backed by data.
 
 **Batting**
@@ -65,13 +65,13 @@ The analysis is structured around five distinct angles, each in its own Jupyter 
 Metrics per batsman per phase (powerplay / middle / death): strike rate, boundary %, dot ball %. Minimum 50 balls faced in each specific phase to qualify - thresholds are independent. Death specialist classification requires avg batting position > 5 to distinguish genuine finishers from openers.
 
 **2. Bowler Matchup Analysis** (`notebooks/03_bowler_matchups.ipynb`)
-798 bowler-batsman matchups at 20+ balls faced. Heatmaps for strike rate and dismissal probability. K-means clustering (k=4) on batsman vulnerability profiles across bowler types - produces archetypes like spin-vulnerable and pace-vulnerable. 36 batsmen eligible for clustering.
+897 bowler-batsman matchups at 20+ balls faced. Heatmaps for strike rate and dismissal probability. K-means clustering (k=4) on batsman vulnerability profiles across bowler types - produces archetypes like spin-vulnerable and pace-vulnerable. 38 batsmen eligible for clustering.
 
 **3. Venue and Pitch Impact** (`notebooks/04_venue_impact.ipynb`)
-Independent-sample t-tests comparing each venue's run rate against all others. Reports both p-value and Cohen's d - statistical significance alone does not tell you whether the difference is practically meaningful. 10 qualified venues (3+ seasons of data, not COVID-era UAE or 2022-only overflow grounds).
+Independent-sample t-tests comparing each venue's run rate against all others. Reports both p-value and Cohen's d - statistical significance alone does not tell you whether the difference is practically meaningful. 11 qualified venues (10+ matches in the 2021-26 window, not COVID-era UAE or 2022-only overflow grounds).
 
 **4. Win Probability Model** (`notebooks/05_win_probability.ipynb`)
-Logistic Regression baseline trained on 2019-2026 chase data. Features include current run rate, required run rate, run_rate_pressure (engineered), wickets in hand, overs remaining, venue, and batting team. Evaluated with accuracy, ROC-AUC, and a calibration curve - the calibration curve validates that predicted probabilities are actually reliable, not just that the classifier is accurate.
+Logistic Regression baseline trained on 2019-2026 chase data. Features include current run rate, required run rate, run_rate_pressure (engineered), wickets in hand, overs remaining, venue, and batting team. I evaluated it with accuracy, ROC-AUC, and a calibration curve - the calibration curve checks that the predicted probabilities are actually reliable, not just that the classifier is accurate.
 
 **5. Player Impact Score** (`notebooks/06_player_impact.ipynb`)
 Composite metric: batting contribution vs phase average (50%), bowling economy vs venue average (35%), fielding from wicket records (15%). Weights are per-role - a pure batsman is not penalised for not bowling. Produces per-match scores and season leaderboards from 2021-26.
@@ -139,8 +139,8 @@ Rather than maintain a role classification table (batsman / bowler / allrounder)
 
 **Primary source**: [Cricsheet](https://cricsheet.org) - ball-by-ball IPL data in JSON format, every match since 2008. Flattened into two canonical DataFrames at the start of the pipeline:
 
-- `deliveries.csv` - 279,586 rows, one per delivery. Columns include phase, batting position, cumulative run rate, required run rate, run_rate_pressure, super_over flag, and all wicket metadata.
-- `matches.csv` - 1,175 rows, one per match. Columns include toss decision, result margin, and player of the match.
+- `deliveries.csv` - 295,732 rows, one per delivery. Columns include phase, batting position, cumulative run rate, required run rate, run_rate_pressure, super_over flag, and all wicket metadata.
+- `matches.csv` - 1,243 rows, one per match. Columns include toss decision, result margin, and player of the match.
 
 **Secondary source**: Kaggle IPL Player Performance Dataset - career aggregates and auction prices.
 
@@ -202,5 +202,5 @@ These are worth knowing if you're extending the project or evaluating the analys
 - **Fielding is incomplete**: Cricsheet only records catches and run-outs from wicket metadata. Direct throws, misfields, and fielding stops are not captured. The fielding component of the impact score is an undercount.
 - **Win probability is 2nd innings only**: The current model only applies to chases. A 1st innings win probability model would need a different feature set and architecture.
 - **Venue conditions change**: Pitch preparation at the same ground can shift across seasons. Restricting to 2021-26 reduces (but does not eliminate) this noise.
-- **Name normalisation is incomplete**: `src/name_map.py` covers 202 known players but may miss edge cases for players with inconsistent Cricsheet spellings across seasons.
+- **Name normalisation is incomplete**: `src/name_map.py` covers known inconsistencies but may miss edge cases for players with inconsistent Cricsheet spellings across seasons.
 - **Auction price comparison is indicative**: Auction prices reflect expected future value, not just past performance. The "outperforming reputation" angle is interesting but not rigorous.

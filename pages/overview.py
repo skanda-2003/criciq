@@ -133,8 +133,8 @@ layout = html.Div([
                 ),
                 _finding("#f97316", [
                     html.Strong("Wankhede is not a batting paradise."),
-                    " In 2021-26 it is statistically below average (p = 0.014, d = -0.02). "
-                    "Delhi, Bengaluru, and Kolkata are the actual high-scoring grounds.",
+                    " In 2021-26 it is below the current-ground average (p = 0.048, d = -0.02). "
+                    "The effect is small but the direction is consistent - Dharamsala, Bengaluru, and Kolkata are the actual high-scoring grounds.",
                 ]),
                 _finding("#ef4444", [
                     html.Strong("Chennai is the hardest ground to bat on"),

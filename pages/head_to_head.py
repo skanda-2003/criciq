@@ -457,7 +457,7 @@ def update_wp_trajectory(match_id, team_a, team_b, season_data):
         if col in del_f.columns:
             del_f[col] = del_f[col].replace(_RENAME)
 
-    # Grab the match row so we have venue + date for the chart title
+    # grab the match row for venue + date for the chart title
     match_rows = mat_f[mat_f["match_id"] == match_id]
     if match_rows.empty:
         return [html.P("Match data not found.", style={"fontSize": "11px", "color": "#888"})]
